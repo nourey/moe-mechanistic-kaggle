@@ -1,9 +1,11 @@
 import contextlib
+import hashlib
 import io
 import json
 import os
 import sys
 import tempfile
+import types
 import unittest
 import zipfile
 from pathlib import Path
@@ -46,12 +48,27 @@ class Fixture:
 
 
 class RuntimeTests(unittest.TestCase):
-    def prepare(self, root, fixture):
+    def prepare(self, root, fixture, **kwargs):
         with patch.object(runtime.platform, 'system', return_value='Linux'), \
              patch.object(runtime.platform, 'machine', return_value='x86_64'), \
              patch.object(Path, 'is_dir', return_value=True), \
              contextlib.redirect_stdout(io.StringIO()):
-            return runtime.prepare(root, execute=fixture.execute, inventory=fixture.inventory)
+            return runtime.prepare(root, execute=fixture.execute, inventory=fixture.inventory, **kwargs)
+
+    def resume_fixture(self, root):
+        root = Path(root)
+        name = 'moe-runtime-SYNTHETIC-previous'
+        venv = root / (name + '-venv')
+        (venv / 'bin').mkdir(parents=True)
+        (venv / 'bin/python').write_text('SYNTHETIC NOT EXECUTABLE')
+        files = {'status.json': json.dumps({'failed_step': 'native-import', 'venv_preserved_at': str(venv)}).encode(),
+                 'commands.json': json.dumps([{'label': label, 'exit_code': 0} for label in ('install', 'pip-check')]).encode(),
+                 'pip-install-report.json': json.dumps(report()).encode()}
+        files['SHA256SUMS'] = ''.join(hashlib.sha256(data).hexdigest() + '  ' + n + '\n' for n, data in files.items()).encode()
+        archive = root / (name + '.zip')
+        with zipfile.ZipFile(archive, 'x') as z:
+            for n, data in files.items(): z.writestr(n, data)
+        return archive, hashlib.sha256(archive.read_bytes()).hexdigest()
 
     def test_unsupported_host_archives_refusal_without_install(self):
         fixture = Fixture()
@@ -147,6 +164,60 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(result['exit_code'], 124)
         self.assertTrue(result['timed_out'])
         self.assertIn('SYNTHETIC partial output', result['stdout'])
+
+    def test_resume_reuses_verified_attempt_without_installing_and_preserves_old_zip(self):
+        fixture = Fixture()
+        with tempfile.TemporaryDirectory() as root:
+            archive, sha = self.resume_fixture(root)
+            original = archive.read_bytes()
+            result = self.prepare(root, fixture, resume_archive=archive, resume_sha256=sha)
+            self.assertEqual(result['runtime_preparation'], 'PASS')
+            self.assertFalse(result['installation_attempted'])
+            self.assertEqual(result['resumed_from_archive_sha256'], sha)
+            self.assertNotIn('create-venv', fixture.labels)
+            self.assertNotIn('seed-pip', fixture.labels)
+            self.assertNotIn('install', fixture.labels)
+            self.assertIn('native-import', fixture.labels)
+            self.assertEqual(archive.read_bytes(), original)
+            with zipfile.ZipFile(result['archive']) as z:
+                self.assertEqual(z.read(archive.name), original)
+
+    def test_resume_wrong_receipt_hash_stops_before_any_command(self):
+        fixture = Fixture()
+        with tempfile.TemporaryDirectory() as root:
+            archive, _ = self.resume_fixture(root)
+            result = self.prepare(root, fixture, resume_archive=archive, resume_sha256='0' * 64)
+            self.assertEqual(result['runtime_preparation'], 'FAIL')
+            self.assertEqual(fixture.labels, [])
+
+    def test_missing_old_venv_never_falls_back_to_install(self):
+        fixture = Fixture()
+        with tempfile.TemporaryDirectory() as root:
+            archive, sha = self.resume_fixture(root)
+            (Path(root) / (archive.stem + '-venv') / 'bin/python').unlink()
+            result = self.prepare(root, fixture, resume_archive=archive, resume_sha256=sha)
+            self.assertEqual(result['runtime_preparation'], 'FAIL')
+            self.assertIn('no automatic reinstall', result['error'])
+            self.assertEqual(fixture.labels, [])
+
+    def test_pinned_cuda_check_succeeds_with_stable_extensions_and_no_legacy_module(self):
+        # CPU-only negative control: valid pinned CUDA names exist, legacy _C does not.
+        names = ('torch', 'vllm', 'triton', 'transformers',
+                 'vllm._C_stable_libtorch', 'vllm._moe_C_stable_libtorch')
+        modules = {n: types.ModuleType(n) for n in names}
+        for module in modules.values():
+            module.__version__ = 'SYNTHETIC'
+            module.__file__ = '/SYNTHETIC/no-real-library-loaded'
+        modules['torch'].__version__ = '2.13.0+SYNTHETIC'
+        modules['vllm'].__version__ = '0.31.0'
+        modules['vllm'].__path__ = []
+        modules['vllm']._C_stable_libtorch = modules['vllm._C_stable_libtorch']
+        modules['vllm']._moe_C_stable_libtorch = modules['vllm._moe_C_stable_libtorch']
+        with patch.dict(sys.modules, modules), patch.object(sys, 'prefix', '/SYNTHETIC_VENV'), \
+             contextlib.redirect_stdout(io.StringIO()):
+            exec(runtime.NATIVE_IMPORT, {})
+            obsolete = runtime.NATIVE_IMPORT.replace('vllm._C_stable_libtorch', 'vllm._C')
+            with self.assertRaises(ModuleNotFoundError): exec(obsolete, {})
 
 
 if __name__ == '__main__':

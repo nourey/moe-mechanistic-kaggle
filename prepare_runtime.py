@@ -29,12 +29,15 @@ for name in names:
     except m.PackageNotFoundError: versions[name] = None
 print(json.dumps({'python': sys.executable, 'prefix': sys.prefix, 'versions': versions}))
 """
-NATIVE_IMPORT = """import json, sys, torch, vllm, vllm._C, triton, transformers
+NATIVE_IMPORT = """import json, sys, torch, vllm, triton, transformers
+import vllm._C_stable_libtorch
+import vllm._moe_C_stable_libtorch
 if sys.prefix == sys.base_prefix: raise RuntimeError('Not inside isolated venv')
 if torch.__version__.split('+')[0] != '2.13.0': raise RuntimeError(torch.__version__)
 if vllm.__version__ != '0.31.0': raise RuntimeError(vllm.__version__)
 print(json.dumps({'torch': torch.__version__, 'vllm': vllm.__version__,
-                 'native_extension': vllm._C.__file__, 'triton': triton.__version__,
+                 'native_extension': vllm._C_stable_libtorch.__file__,
+                 'moe_extension': vllm._moe_C_stable_libtorch.__file__, 'triton': triton.__version__,
                  'transformers': transformers.__version__}))
 """
 
@@ -99,7 +102,7 @@ def seal(out):
     return dict(archive=str(archive), sha256=sha)
 
 
-def prepare(output_root, execute=run, inventory=diagnose.collect):
+def prepare(output_root, execute=run, inventory=diagnose.collect, resume_archive=None, resume_sha256=None):
     root = Path(output_root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     run_id = 'moe-runtime-' + dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8]
@@ -107,7 +110,7 @@ def prepare(output_root, execute=run, inventory=diagnose.collect):
     out.mkdir(exist_ok=False)
     (out / 'logs').mkdir()
     venv = root / (run_id + '-venv')  # Outside archive and outside the Git checkout.
-    commands, status = [], dict(runtime_preparation='FAIL', failed_step='preflight',
+    commands, status = [], dict(runtime_preparation='FAIL', failed_step='preflight', installation_attempted=False,
         scope='Stage A isolated binary installation/native imports only. B/C/D/E/M NOT_EXECUTED.',
         source_note='PyPI release wheel/hash, not a proof of the exact reviewed source commit or producer patch.')
     before = None
@@ -126,8 +129,38 @@ def prepare(output_root, execute=run, inventory=diagnose.collect):
     try:
         if platform.system() != 'Linux' or platform.machine() != 'x86_64' or not Path('/kaggle/working').is_dir():
             raise RuntimeError('This installer requires the reviewed Linux x86_64 Kaggle environment')
-        # Do not run twice against an existing environment; preserve previous attempts.
-        if venv.exists(): raise RuntimeError('Refusing to reuse an existing venv')
+        if resume_archive is not None:
+            status['failed_step'] = 'resume-validation'
+            original = Path(resume_archive).resolve()
+            data = original.read_bytes()
+            digest = hashlib.sha256(data).hexdigest()
+            if not resume_sha256 or digest != resume_sha256:
+                raise RuntimeError('Previous evidence archive SHA256 does not match; no install attempted')
+            with zipfile.ZipFile(original) as z:
+                if z.testzip() is not None: raise RuntimeError('Previous archive CRC failure')
+                for line in z.read('SHA256SUMS').decode().splitlines():
+                    want, name = line.split('  ', 1)
+                    if hashlib.sha256(z.read(name)).hexdigest() != want:
+                        raise RuntimeError('Previous evidence checksum mismatch: ' + name)
+                previous = json.loads(z.read('status.json'))
+                if previous.get('failed_step') != 'native-import':
+                    raise RuntimeError('Resume only supports a previously completed install/pip check with native-import failure')
+                successful = {c['label'] for c in json.loads(z.read('commands.json')) if c['exit_code'] == 0}
+                if not {'install', 'pip-check'}.issubset(successful):
+                    raise RuntimeError('Previous installation/pip check did not complete')
+                venv = root / (original.stem + '-venv')
+                if Path(previous['venv_preserved_at']).resolve() != venv.resolve():
+                    raise RuntimeError('Previous venv does not match the exact selected evidence/run identity')
+                if not (venv / 'bin/python').is_file():
+                    raise RuntimeError('Previous Kaggle venv is unavailable; no automatic reinstall attempted')
+                verify_install_report(json.loads(z.read('pip-install-report.json')))
+                (out / 'pip-install-report.json').write_bytes(z.read('pip-install-report.json'))
+            (out / original.name).write_bytes(data)
+            status.update(resumed_from_archive_sha256=digest, installation_provenance='Historical pip report; current pip check and native imports are rerun')
+        elif resume_sha256 is not None:
+            raise RuntimeError('--resume-sha256 requires --resume-archive')
+        elif venv.exists():
+            raise RuntimeError('Refusing to overwrite an existing venv')
         (out / 'runtime-requirements.txt').write_bytes((ROOT / 'runtime-requirements.txt').read_bytes())
         capture('git-head', ['git', '-C', ROOT, 'rev-parse', 'HEAD'])
         if capture('git-status', ['git', '-C', ROOT, 'status', '--porcelain']).strip():
@@ -143,14 +176,16 @@ def prepare(output_root, execute=run, inventory=diagnose.collect):
         if (len(gpus) != 2 or len({g.get('uuid') for g in gpus}) != 2
                 or any('T4' not in g.get('name', '') or g.get('compute_capability') != '7.5' for g in gpus)):
             raise RuntimeError('Expected exactly two identifiable SM75 T4 GPUs; no install attempted')
-        capture('create-venv', [sys.executable, '-m', 'venv', '--without-pip', venv])
         py = venv / 'bin/python'
-        # Avoid ensurepip; the Kaggle base pip already supports --python.
-        capture('seed-pip', [sys.executable, '-m', 'pip', '--python', py, '--no-cache-dir',
-                'install', '--only-binary=:all:', '--index-url', 'https://pypi.org/simple', 'pip==26.2.2'], 300)
-        capture('install', [py, '-m', 'pip', '--no-cache-dir', 'install', '--only-binary=:all:',
-                '--index-url', 'https://pypi.org/simple', '--report', out / 'pip-install-report.json',
-                '-r', ROOT / 'runtime-requirements.txt'], 1800)
+        if resume_archive is None:
+            capture('create-venv', [sys.executable, '-m', 'venv', '--without-pip', venv])
+            # Avoid ensurepip; the Kaggle base pip already supports --python.
+            capture('seed-pip', [sys.executable, '-m', 'pip', '--python', py, '--no-cache-dir',
+                    'install', '--only-binary=:all:', '--index-url', 'https://pypi.org/simple', 'pip==26.2.2'], 300)
+            status['installation_attempted'] = True
+            capture('install', [py, '-m', 'pip', '--no-cache-dir', 'install', '--only-binary=:all:',
+                    '--index-url', 'https://pypi.org/simple', '--report', out / 'pip-install-report.json',
+                    '-r', ROOT / 'runtime-requirements.txt'], 1800)
         status['failed_step'] = 'verify-wheel'
         receipt = verify_install_report(json.loads((out / 'pip-install-report.json').read_text()))
         (out / 'wheel-verification.json').write_text(json.dumps(receipt, indent=2) + '\n')
@@ -186,8 +221,10 @@ def prepare(output_root, execute=run, inventory=diagnose.collect):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output-root', default='/kaggle/working')
+    parser.add_argument('--resume-archive', help='Exact previous evidence ZIP; reuse its existing venv without installing anything')
+    parser.add_argument('--resume-sha256', help='Independently supplied expected hash for that previous ZIP')
     args = parser.parse_args()
-    result = prepare(args.output_root)
+    result = prepare(args.output_root, resume_archive=args.resume_archive, resume_sha256=args.resume_sha256)
     print(json.dumps(result, indent=2))
     print('EVIDENCE_JSON:' + json.dumps(result, separators=(',', ':')))
     # Packaging success does not imply runtime_preparation PASS; inspect status.json.

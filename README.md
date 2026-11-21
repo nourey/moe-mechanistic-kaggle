@@ -6,13 +6,43 @@
 
 Güncel Kaggle PyTorch'u `2.11.0+cu130`, Transformers `5.20.2`. [vLLM 0.31.0'ın resmi paket metadatası](https://pypi.org/pypi/vllm/0.31.0/json) PyTorch `2.13.0` ve Transformers `>=5.10.4,<5.18.0` istiyor. Bu fark kurulmuş bir ABI hatası değildir; henüz vLLM kurulmamış.
 
-**Sıradaki notebook: `Kaggle_Isolated_Runtime.ipynb` (`runtime-v0.2.0`).** Yeni private notebook'ta T4 ×2 / Internet On ile Run All kullan. Kaggle ana ortamını değiştirmeden ayrı, yeni bir venv oluşturur; ensurepip kullanmaz. Resmi PyPI'den yalnız hazır ikili paketlerle tek kurulum dener; derleme, alternatif sürüm veya otomatik ikinci deneme yapmaz. Bu birkaç GB indirme/depolama gerektirebilir. Hata olursa ZIP üretip durur. Mevcut ortamları veya önceki kanıtları silmez.
+**Yeni ortam için notebook: `Kaggle_Isolated_Runtime.ipynb` (`runtime-v0.2.1`).** Yeni private notebook'ta T4 ×2 / Internet On ile Run All kullan. Kaggle ana ortamını değiştirmeden ayrı, yeni bir venv oluşturur; ensurepip kullanmaz. Resmi PyPI'den yalnız hazır ikili paketlerle tek kurulum dener; derleme, alternatif sürüm veya otomatik ikinci deneme yapmaz. Bu birkaç GB indirme/depolama gerektirebilir. Hata olursa ZIP üretip durur. Mevcut ortamları veya önceki kanıtları silmez. **v0.2.0 ortamın hâlâ açıksa yeniden kurma; aşağıdaki yeniden kontrol hücresini kullan.**
 
-Bu adım yalnız kurulum, `pip check`, `vllm._C` dahil native importlar ve izole A tanılamasıdır. Model indirmez, MoE kernel veya iki-GPU collective çalıştırmaz. Başarılı olsa bile B/C/D/E/M aşamaları çalıştırılmamış kalır. Ana ortamın seçili paket sürümlerini önce/sonra karşılaştırır; tüm dosya sisteminin değişmediğini iddia etmez.
+Bu adım yalnız kurulum, `pip check`, `vllm._C_stable_libtorch` / `vllm._moe_C_stable_libtorch` native importları ve izole A tanılamasıdır. Model indirmez, MoE kernel veya iki-GPU collective çalıştırmaz. Başarılı olsa bile B/C/D/E/M aşamaları çalıştırılmamış kalır. Ana ortamın seçili paket sürümlerini önce/sonra karşılaştırır; tüm dosya sisteminin değişmediğini iddia etmez.
 
 Bana yalnız yeni `moe-runtime-....zip` dosyasını gönder. İçinde tam kurulum stdout/stderr, komutlar, PyPI wheel URL/sürümleri/SHA-256 içeren pip raporu, runner kaynak özetleri, önce/sonra tanılamaları ve sonuç bulunur. vLLM wheel'inin adı ve raporlanan SHA-256'sı incelenen resmi sürümle karşılaştırılır. Bu yayın wheel'inin kabulü, eski kaynak checkout'undaki EngineCore producer patch'inin kurulduğu veya birebir kaynak commit'inin doğrulandığı anlamına gelmez. Transitive paketler pip raporunda kaydedilir; henüz dondurulmuş tam bir lockfile yoktur.
 
 Kaggle'ın sistemde görünen CUDA/NCCL paket metadatası ile PyTorch'un bildirdiği yüklü runtime sürümleri farklı olabilir. İlk kanıt, gerçek yüklenen dosyaların tamamını belirlemediği için bu fark tek başına çakışma olarak yorumlanmıyor. İzole import sonucu görülmeden CUDA veya T4 uyumsuzluğu kabul edilmeyecek.
+
+## 22 Kasım: v0.2.0 sonucu ve kurulum yapmadan yeniden kontrol
+
+`moe-runtime-20261121T210750Z-1d519346.zip` incelendi: CRC, 60/60 iç dosya özeti ve 11/11 runner kaynak özeti eşleşiyor. İkili paket kurulumu ve `pip check` geçmiş; ana ortamın seçili sürümleri değişmemiş. v0.2.0 kontrolümüzde eski `vllm._C` adını kullanmamız nedeniyle native-import adımı durdu. Pinned vLLM `db9527a...` kaynağının `CMakeLists.txt:367` ve `vllm/platforms/cuda.py:237` bölümleri CUDA için stable-libtorch modüllerini tanımlıyor. Bu doğrulama hatası v0.2.1'de düzeltildi; düzeltilmiş modüllerin gerçek Kaggle import sonucu henüz elde edilmedi.
+
+`sitecustomize` / eksik `wrapt` mesajı başarılı kurulum sırasında da görülmüş. Önceki `ModuleNotFoundError: No module named 'vllm._C'` sonucunun nedeni bu uyarı değil. Bu düzeltmede `wrapt`, CUDA veya başka bağımlılık eklenmiyor/değiştirilmiyor.
+
+**Aynı Kaggle oturumunda**, mevcut notebook'un en altına tek hücre ekleyip yalnız bu hücreyi çalıştır. Run All yapma. Hücre küçük runner deposunu alır; pip/venv kurulum komutları çalıştırmaz. Eski ZIP'in SHA-256'sını ve iç özetlerini doğrular; eski sanal ortam bulunamazsa kurulum yapmadan durur. Önceki ZIP yeni kanıta değiştirilmeden eklenir.
+
+```python
+from pathlib import Path
+import subprocess, sys, json
+from IPython.display import display, FileLink
+repo = Path('/kaggle/working/moe-mechanistic-kaggle-runtime-v0.2.1')
+if repo.exists():
+    raise RuntimeError('Bu runner klasörü zaten var; önceki kanıtı koru ve dur.')
+subprocess.run(['git', 'clone', '--branch', 'runtime-v0.2.1', '--depth', '1',
+    'https://github.com/nourey/moe-mechanistic-kaggle.git', str(repo)], check=True)
+cmd = [sys.executable, '-B', str(repo / 'prepare_runtime.py'),
+    '--resume-archive', '/kaggle/working/moe-runtime-20261121T210750Z-1d519346.zip',
+    '--resume-sha256', 'd58dd1416e8fbc20105f82e2b6dd8d418fcb2c3ec7c615ed8445a9ca207e2772']
+result = subprocess.run(cmd, text=True, capture_output=True)
+print(result.stdout)
+print(result.stderr)
+result.check_returncode()
+receipt = json.loads(next(s.split(':', 1)[1] for s in reversed(result.stdout.splitlines()) if s.startswith('EVIDENCE_JSON:')))
+display(FileLink(receipt['archive']))
+```
+
+Yeni ZIP'i geri gönder. Burada doğru modülleri import edebilmek MoE yürütme veya EP2 kabulü değildir. Eski `runtime-v0.2.0` etiketi ve asıl başarısız kanıt korunur.
 
 ## İlk sürümün kapsamı
 
