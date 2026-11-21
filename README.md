@@ -1,5 +1,36 @@
 # OLMoE Kaggle ortam tanılaması
 
+## Güncel sonuç: A PASS — sıradaki yalnız B kernel kontrolü
+
+`moe-runtime-20261121T212403Z-5a9e8e9a.zip` doğrulandı: CRC, 92/92 iç dosya özeti, 11/11 runner özeti ve önceki başarısız ZIP'in değişmeden taşındığı doğrulandı. İki native CUDA uzantısı yükleniyor; PyTorch `2.13.0+cu130`, vLLM `0.31.0`, Triton `3.7.1`, Transformers `5.17.0`. Yeniden kurulum yok, ana ortamın seçili sürümleri değişmemiş. `wrapt` / `sitecustomize` mesajı hâlâ var; başarılı native komutun stderr'inde korunuyor. Bu mesajı gidermek için paket eklenmedi.
+
+**B sürümü: `moe-kernel-v0.3.0`.** Aynı iki T4'te sırayla birer gerçek `vllm...fused_moe.fused_experts` çağrısı yapar. Yeni paket veya model indirmez. Normal Triton ilk-çağrı JIT derlemesi olabilir; bağımlılık/toolchain derlemesi veya alternatif backend denemesi yapılmaz.
+
+Fixture sentetik FP16 ağırlıklar, 8 token, 64 uzman, top-8, hidden 2048 / intermediate 1024 ve SiLU-gated MLP kullanır. Her uzman seçilir; routing CPU'da bilinir ve kaydedilir. Pretrained OLMoE ağırlıkları, gerçek model router'ı, tam serving backend seçimi veya model residency test edilmez. Aynı girdiler iki cihazda ayrı ayrı yürütülür; bu DP2/EP2, expert sharding veya GPU'lar arası collective kanıtı değildir.
+
+Kabul: çıktı seçilen GPU'da FP16 olmalı; bağımsız FP32 CPU formülüyle `atol=0.02, rtol=0` karşılaştırması geçmeli. Tolerans pinned vLLM kernel testinden alınan mühendislik kontrolüdür, araştırma SLO'su değildir. Sıfır çıktı negatif kontrolü reddedilmeli; CUDA profiler'da en az iki `fused_moe_kernel` olayı bulunmalı. CPU etiketleri CUDA olayı sayılmaz. Matematik geçip CUDA izi yoksa PARTIAL, ilk başarısız cihazda durur. CUDA/CUPTI profili kurulamazsa hata korunur; bu tek başına MoE kernel uyumsuzluğu kanıtı sayılmaz. Zamanlar ilk JIT ve profiling içerir, kalibrasyon/performans verisi değildir.
+
+**Mevcut Kaggle notebook'unun altına yeni Code hücresi ekle; yalnız bunu çalıştır, Run All yapma:**
+
+```python
+import subprocess, sys, json
+from IPython.display import display, FileLink
+repo = '/kaggle/working/moe-mechanistic-kaggle-kernel-v0.3.0'
+subprocess.run(['git', 'clone', '--branch', 'moe-kernel-v0.3.0', '--depth', '1',
+    'https://github.com/nourey/moe-mechanistic-kaggle.git', repo], check=True)
+result = subprocess.run([sys.executable, '-B', repo + '/moe_kernel.py',
+    '--prior-archive', '/kaggle/working/moe-runtime-20261121T212403Z-5a9e8e9a.zip',
+    '--prior-sha256', 'b37a822e0a89fdf7411c0d06d4c6b779064f267d97460afd8f44caa813699e92'],
+    text=True, capture_output=True)
+print(result.stdout)
+print(result.stderr)
+result.check_returncode()
+receipt = json.loads(next(s.split(':', 1)[1] for s in reversed(result.stdout.splitlines()) if s.startswith('EVIDENCE_JSON:')))
+display(FileLink(receipt['archive']))
+```
+
+Yeni `moe-kernel-….zip` dosyasını gönder. Önceki Kaggle oturumu/venv yoksa kurulum yapmadan BLOCKED olur. ZIP; önceki A kanıtını, exact runner commit/kaynak özetlerini, girdi tensor özetleri/routing'i, tam stdout/stderr'i, sayısal sonuçları (`.npy`, pickle yok), CUDA izini ve her cihazın sonucunu içerir. A tanılaması ve konfigürasyonu kendi kapsamıyla korunur; B'nin kapsamı ayrıca `kernel.json` içindedir. Sonraki C/D/E/M bu sürümde çalıştırılmaz.
+
 ## İlk GPU ortam sonucu ve sıradaki dar düzeltme
 
 21 Kasım 2026 tarihli `env-v0.1.0` kanıtı doğrulandı: arşiv CRC'si, 31/31 iç dosya özeti ve altı kaynak özeti yayımlanan `c1783f1c5fbf310290e17ffc5a7ce729e926fee4` commit'iyle eşleşiyor. İki gerçek T4/SM75 görülüyor; PyTorch CUDA cihaz sorguları çalışıyor. A aşaması yalnız `ModuleNotFoundError: No module named 'vllm'` nedeniyle FAIL. MoE kernel, gerçek NCCL aktarımı ve model-serving çalıştırılmadı.
