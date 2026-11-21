@@ -1,0 +1,36 @@
+{
+  "protocol": "moe-kaggle-environment-v0.1",
+  "active_stage": "A_ENVIRONMENT_ONLY",
+  "candidate_experiment": {
+    "model_id": "allenai/OLMoE-1B-7B-0924",
+    "model_revision": null,
+    "dtype": "float16",
+    "tp": 1,
+    "dp": 2,
+    "ep": 2,
+    "communication_backend": "allgather_reducescatter",
+    "expected_gpu_count": 2,
+    "expected_gpu_name_contains": "T4"
+  },
+  "candidate_vllm": {
+    "release": "0.31.0",
+    "reviewed_source_revision": "db9527a46873454610df6dbedf79a36d6bf1a7f6",
+    "note": "Candidate only. The diagnostic records actual installed packages and does not install or assert this revision."
+  },
+  "forbidden_in_this_release": [
+    "dependency installation/upgrades",
+    "model download/loading",
+    "MoE or inference kernel execution",
+    "NCCL collectives/data transfers",
+    "serving processes",
+    "BLIS calibration"
+  ],
+  "later_stages": [
+    "B_FP16_MOE_KERNEL",
+    "C_TWO_GPU_COMMUNICATION",
+    "D_MODEL_LOADING",
+    "E_GENUINE_DP2_EP2_SERVING",
+    "M_MECHANISTIC_MEASUREMENT"
+  ],
+  "scientific_boundary": "OLMoE FP16/AGRS is a separate domain; no Qwen BF16/DeepEP, D2, G0 or physical-Q acceptance."
+}

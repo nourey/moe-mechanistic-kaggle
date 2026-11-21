@@ -1,0 +1,3 @@
+# Environment diagnostic: Python standard library only (Python >= 3.9).
+# Do not install or upgrade torch/vLLM/Triton before returning the first evidence ZIP.
+# Exact runtime dependencies will be reviewed after the observed Kaggle environment.

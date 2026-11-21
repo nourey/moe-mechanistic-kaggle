@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+evidence/
+moe-env-*/
+*.zip
+*.zip.sha256
+.env
+.venv/
+kaggle.json
+.kaggle/
+*.pem
