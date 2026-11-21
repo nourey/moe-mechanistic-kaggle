@@ -1,0 +1,5 @@
+# Isolated Stage A correction, not a change to the Kaggle base environment.
+# Requirements agree with the published vLLM 0.31.0 wheel metadata.
+vllm==0.31.0
+torch==2.13.0
+transformers>=5.10.4,<5.18.0
