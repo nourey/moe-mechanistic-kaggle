@@ -1,5 +1,37 @@
 # OLMoE Kaggle ortam tanılaması
 
+## İletişim C PASS — model için kalan ilk önkoşul: depolama
+
+`moe-comm-20261121T221312Z-3bde775e.zip` doğrulandı: CRC, 25/25 dosya ve 17/17 kaynak özeti eşleşiyor. Ham FP16 NPY dosyalarından her rank'te 8.192 AllGather ve 4.096 ReduceScatter değeri yeniden kontrol edildi; uzak veri, sıra ve destination rank sahipliği doğru. CUDA izlerinde her cihazda gerçek `ncclDevKernel_AllGather_RING_LL` ve `ncclDevKernel_ReduceScatter_Sum_f16_RING_LL` var. Mevcut vLLM PyNccl API dosyaları pinned kaynakla eşleşiyor. NCCL `2.29.7+cuda13.2` raporlanmış; PyTorch build CUDA `13.0` etiketi ayrı bir gözlemdir. Bu koşulda iki primitive başarıyla çalıştı; tüm CUDA stack kombinasyonlarına genellenmez.
+
+Native loglarda iki yönde `via SHM/direct/direct` seçilmiş. `NET/Socket` ve P2P-capability satırları bu seçilmiş payload kanalının yerine geçmez. GPU tamponları/NCCL CUDA yürütmesi doğrulandı; doğrudan GPU P2P, NVLink veya RDMA iddiası yok. Her rank'in Init/payload/Abort kayıtları kendi communicator pointer'ıyla bağlı; ortak commId ve fixture'ın iki üyesiyle birlikte kontrol edildi. Her iki owned communicator için `Abort COMPLETE` gözlendi ve süreçler join oldu. Orijinal runtime receipt'lerindeki `native_abort_completion_verified=false` değiştirilmedi; bu ek bulgu offline native log incelemesidir, serving graceful-drain kanıtı değildir.
+
+A/B/C sınırlı qualification adımları geçti. Tam OLMoE yükleme, vLLM `AgRsAll2AllManager`, ragged/idle rank popülasyonları, EP2 serving, scheduler/KV ve BLIS kalibrasyonu henüz yapılmadı.
+
+[Resmi Hugging Face kaydından](https://huggingface.co/allenai/OLMoE-1B-7B-0924/tree/6d84c48581ece794365f2b8e9cfb043c68ade9c5) model revision'ı `6d84c48581ece794365f2b8e9cfb043c68ade9c5` olarak sabitlendi. `model-pin.json`; üç BF16 safetensors shard'ının LFS SHA-256'larını, dosya boyutlarını ve doğrulanmış küçük config/index kimliklerini içerir. Runtime hedefi FP16 olacak; checkpoint BF16 olması T4'te BF16 çalıştırma talimatı değildir. Ağırlıklar indirilmedi.
+
+Üç ağırlık dosyası **13.838.721.960 bayt**, seçilen tüm model/tokenizer dosyaları **13.841.130.907 bayt**. Son `/kaggle/working` boş alanı yaklaşık 12 GB idi. Bu nedenle önce explicit cache alanını seçmek gerekiyor. Host dosya sisteminin TB seviyesinde boş alan raporlamasını kullanıcı/container kotası olarak kabul etmiyoruz.
+
+**`storage-v0.5.0` yalnız bu eksik ortam bilgisini toplar:** `/kaggle/working`, `/kaggle/temp`, HF cache yollarının mevcut üst dizinleri, boş alan, filesystem device ID, küçük geçici yaz/oku kontrolü ve cgroup RAM limitleri. Kendi küçük geçici dosyası kapanınca kaldırılır; mevcut dosyalar silinmez. Eksik hedef dizin için üst dizin ölçüldüğü açıkça belirtilir. Model/paket indirmez, GPU kullanmaz, Model D PASS üretmez. Sana depolama ayarlarını yorumlama işi düşmez; ZIP'i geri gönder.
+
+Mevcut notebook'un altına yeni Code hücresi ekleyip **yalnız bunu** çalıştır:
+
+```python
+import subprocess, sys, json
+from IPython.display import display, FileLink
+repo = '/kaggle/working/moe-mechanistic-kaggle-storage-v0.5.0'
+subprocess.run(['git', 'clone', '--branch', 'storage-v0.5.0', '--depth', '1',
+    'https://github.com/nourey/moe-mechanistic-kaggle.git', repo], check=True)
+result = subprocess.run([sys.executable, '-B', repo + '/model_storage.py'], text=True, capture_output=True)
+print(result.stdout)
+print(result.stderr)
+result.check_returncode()
+receipt = json.loads(next(s.split(':', 1)[1] for s in reversed(result.stdout.splitlines()) if s.startswith('EVIDENCE_JSON:')))
+display(FileLink(receipt['archive']))
+```
+
+`moe-storage-….zip` dosyasını gönder. Bu soru gerçek model indirmesinden önce gereklidir; A/B/C testleri tekrarlanmaz. Kaggle oturumunu veya accelerator ayarını değiştirme; mevcut sanal ortamı koruyalım. Tam GPU model yükleme komutu, cache yolu ve sınırları belirlenince hazırlanacak.
+
 ## B PASS — sıradaki C: iki-GPU native NCCL iletişimi
 
 `moe-kernel-20261121T214329Z-7706125c.zip` bağımsız incelendi: CRC, 17/17 dosya özeti ve 14/14 kaynak özeti eşleşiyor. Ham NPY dosyalarından her GPU'daki 16.384 değer yeniden karşılaştırıldı: en büyük hata `0.000490427`, sınır `0.02`, uyuşmazlık/NaN yok. Sıfır çıktı negatif kontrolü reddediliyor. CUDA izleri her cihazda doğru device ID'siyle iki `fused_moe_kernel`, bir aktivasyon ve bir MoE sum gösteriyor. İki giriş/routing özeti aynı, bu tek çiftte çıktılar bit düzeyinde aynı. Kurulu `fused_moe.py` dosyası incelenen pinned kaynak dosyasıyla byte/hash olarak eşleşiyor; bu tüm vLLM build'inin aynı commit veya producer patch olduğu iddiası değildir.
@@ -8,7 +40,7 @@ B yalnız sentetik yerel FP16 MoE için PASS. Tam OLMoE, EP2 expert paylaşımı
 
 **C sürümü: `nccl-v0.4.0`.** Aynı sanal ortamda iki yeni geçici process, vLLM'in değişmemiş `PyNcclCommunicator` bileşenini kullanır. Gloo/FileStore yalnız CPU bootstrap/kimlik alışverişidir; veri payload'ı GPU FP16 tamponlarıyla native NCCL AllGather ve ReduceScatter SUM üzerinden gider. Sürüm/kaynak/cihaz uyuşmazlığı kapalı kalır; farklı kütüphane, paket veya transport ayarı denenmez. Constructor'ın mevcut bir-eleman warmup AllReduce'u ayrıca gerçekleşir.
 
-Her rank'in farklı payload'ı var. Toplamların eşleşmesi yeterli değil: uzak rank verisinin doğru sırada gelmesi ve ReduceScatter sonucunun doğru rank'e dönmesi bit düzeyinde kontrol edilir. NaN ile doldurulan hedefler, yazılmayan veya eksik çıktıyı reddeder. Her rank'te native NCCL CUDA olayları ve tam debug logları tutulur. CPU payload fallback yok; NCCL'nin fiziksel P2P/SHM/NET yolu backend adından çıkarılmaz. Eşit boyutlu primitive testi; `AgRsAll2AllManager`, değişken/idle token popülasyonları ve tam EP2 serving doğrulanmaz. `PyNccl.destroy()` dönüşü ve child process join'i kaydedilir; wrapper'ın timeout'lu abort thread'inin tamamlandığı bağımsız olarak iddia edilmez. Gloo timeout 60s, tüm coordinator grubu için sınır 180s; tekrar yok.
+Her rank'in farklı payload'ı var. Toplamların eşleşmesi yeterli değil: uzak rank verisinin doğru sırada gelmesi ve ReduceScatter sonucunun doğru rank'e dönmesi bit düzeyinde kontrol edilir. NaN ile doldurulan hedefler, yazılmayan veya eksik çıktıyı reddeder. Her rank'te native NCCL CUDA olayları ve tam debug logları tutulur. Uygulama CPU/Gloo payload collective'ine geçmez; NCCL'nin kendi iç taşıması SHM/host staging kullanabilir. Fiziksel P2P/SHM/NET yolu backend adından çıkarılmaz. Eşit boyutlu primitive testi; `AgRsAll2AllManager`, değişken/idle token popülasyonları ve tam EP2 serving doğrulanmaz. `PyNccl.destroy()` dönüşü ve child process join'i kaydedilir; wrapper'ın timeout'lu abort thread'inin tamamlandığı bağımsız olarak iddia edilmez. Gloo timeout 60s, tüm coordinator grubu için sınır 180s; tekrar yok.
 
 **Mevcut Kaggle notebook'una yeni Code hücresi ekle; yalnız bunu çalıştır, Run All yapma:**
 

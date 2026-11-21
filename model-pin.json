@@ -1,0 +1,97 @@
+{
+  "model_id": "allenai/OLMoE-1B-7B-0924",
+  "revision": "6d84c48581ece794365f2b8e9cfb043c68ade9c5",
+  "metadata_url": "https://huggingface.co/api/models/allenai/OLMoE-1B-7B-0924/revision/6d84c48581ece794365f2b8e9cfb043c68ade9c5?blobs=true",
+  "checkpoint_tensor_dtype": "BF16",
+  "requested_runtime_dtype": "float16 (not quantized; future runtime conversion must be explicit)",
+  "tensor_parameters": 6919161856,
+  "weight_artifact_bytes": 13838721960,
+  "all_selected_artifact_bytes": 13841130907,
+  "config": {
+    "architectures": [
+      "OlmoeForCausalLM"
+    ],
+    "attention_bias": false,
+    "attention_dropout": 0.0,
+    "clip_qkv": null,
+    "eos_token_id": 50279,
+    "hidden_act": "silu",
+    "hidden_size": 2048,
+    "initializer_range": 0.02,
+    "intermediate_size": 1024,
+    "max_position_embeddings": 4096,
+    "model_type": "olmoe",
+    "norm_topk_prob": false,
+    "num_attention_heads": 16,
+    "num_experts": 64,
+    "num_experts_per_tok": 8,
+    "num_hidden_layers": 16,
+    "num_key_value_heads": 16,
+    "output_router_logits": false,
+    "pad_token_id": 1,
+    "rope_scaling": null,
+    "rope_theta": 10000.0,
+    "router_aux_loss_coef": 0.01,
+    "tie_word_embeddings": false,
+    "torch_dtype": "bfloat16",
+    "transformers_version": "4.43.0.dev0",
+    "use_cache": true,
+    "vocab_size": 50304
+  },
+  "index_total_tensor_bytes": 13838323712,
+  "index_entries": 3219,
+  "files": [
+    {
+      "path": "config.json",
+      "bytes": 759,
+      "git_blob_sha1": "f5c2a6dc189553bbddabb7cbe96b0c03f97ca4ab",
+      "sha256": "3643aa880d2f1c9b418156269ae791c73e5612d6b6b6fde0724d927cf89b6335"
+    },
+    {
+      "path": "generation_config.json",
+      "bytes": 120,
+      "git_blob_sha1": "92e53a4411ee46fe1a2ea88b38925fe83192210a"
+    },
+    {
+      "path": "model-00001-of-00003.safetensors",
+      "bytes": 4997744872,
+      "git_blob_sha1": "c9264efaeb66bf0b7350cd872bb5f5d794f68d8c",
+      "lfs_sha256": "5e3cff7e367794685c241169072c940d200918617d5e2813f1c387dff52d845e"
+    },
+    {
+      "path": "model-00002-of-00003.safetensors",
+      "bytes": 4997235176,
+      "git_blob_sha1": "0b7ad5766d26c0ee23a08dae2eca810ae11648d2",
+      "lfs_sha256": "15ef5c730ee3cfed7199498788cd2faf337203fc74b529625e7502cdd759f4a7"
+    },
+    {
+      "path": "model-00003-of-00003.safetensors",
+      "bytes": 3843741912,
+      "git_blob_sha1": "1474f448d0a988b535c0f7d8aea04bb6c1688026",
+      "lfs_sha256": "a9abac4ac1b55c9adabac721a02fa39971f103eea9a65c310972b1246de76e04"
+    },
+    {
+      "path": "model.safetensors.index.json",
+      "bytes": 287214,
+      "git_blob_sha1": "4c7929b85bfb7ebfeb83cfd2398a4fe0ecfdf90e",
+      "sha256": "0e2e1e0d8d357ac7af817cff28410c3dbad398f060c517a433e4076b2aae5579"
+    },
+    {
+      "path": "special_tokens_map.json",
+      "bytes": 65,
+      "git_blob_sha1": "3e1d70c16f2640555ba8fd31d3ecd1c63425c6a2"
+    },
+    {
+      "path": "tokenizer.json",
+      "bytes": 2115417,
+      "git_blob_sha1": "d861718426ec675fc9a629e91c30a3a427ff31bc"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "bytes": 5372,
+      "git_blob_sha1": "00797e612182918e8fd07c15fc58321399cce6d8"
+    }
+  ],
+  "download_status": "Only config/index and public API metadata inspected; no weight shard downloaded.",
+  "scientific_boundary": "OLMoE FP16/AGRS exploratory domain only; no Qwen/G0/calibration acceptance."
+}
