@@ -1,6 +1,37 @@
 # OLMoE Kaggle ortam tanılaması
 
-## Güncel sonuç: A PASS — sıradaki yalnız B kernel kontrolü
+## B PASS — sıradaki C: iki-GPU native NCCL iletişimi
+
+`moe-kernel-20261121T214329Z-7706125c.zip` bağımsız incelendi: CRC, 17/17 dosya özeti ve 14/14 kaynak özeti eşleşiyor. Ham NPY dosyalarından her GPU'daki 16.384 değer yeniden karşılaştırıldı: en büyük hata `0.000490427`, sınır `0.02`, uyuşmazlık/NaN yok. Sıfır çıktı negatif kontrolü reddediliyor. CUDA izleri her cihazda doğru device ID'siyle iki `fused_moe_kernel`, bir aktivasyon ve bir MoE sum gösteriyor. İki giriş/routing özeti aynı, bu tek çiftte çıktılar bit düzeyinde aynı. Kurulu `fused_moe.py` dosyası incelenen pinned kaynak dosyasıyla byte/hash olarak eşleşiyor; bu tüm vLLM build'inin aynı commit veya producer patch olduğu iddiası değildir.
+
+B yalnız sentetik yerel FP16 MoE için PASS. Tam OLMoE, EP2 expert paylaşımı, scheduler/KV ve serving hâlâ test edilmedi. Eksik T4 tuning dosyası nedeniyle varsayılan kernel launch konfigürasyonu kullanılmış; bu CPU fallback değildir, ancak zamanlar performans/kalibrasyon kanıtı değildir. `wrapt` uyarısı ham loglarda korunur.
+
+**C sürümü: `nccl-v0.4.0`.** Aynı sanal ortamda iki yeni geçici process, vLLM'in değişmemiş `PyNcclCommunicator` bileşenini kullanır. Gloo/FileStore yalnız CPU bootstrap/kimlik alışverişidir; veri payload'ı GPU FP16 tamponlarıyla native NCCL AllGather ve ReduceScatter SUM üzerinden gider. Sürüm/kaynak/cihaz uyuşmazlığı kapalı kalır; farklı kütüphane, paket veya transport ayarı denenmez. Constructor'ın mevcut bir-eleman warmup AllReduce'u ayrıca gerçekleşir.
+
+Her rank'in farklı payload'ı var. Toplamların eşleşmesi yeterli değil: uzak rank verisinin doğru sırada gelmesi ve ReduceScatter sonucunun doğru rank'e dönmesi bit düzeyinde kontrol edilir. NaN ile doldurulan hedefler, yazılmayan veya eksik çıktıyı reddeder. Her rank'te native NCCL CUDA olayları ve tam debug logları tutulur. CPU payload fallback yok; NCCL'nin fiziksel P2P/SHM/NET yolu backend adından çıkarılmaz. Eşit boyutlu primitive testi; `AgRsAll2AllManager`, değişken/idle token popülasyonları ve tam EP2 serving doğrulanmaz. `PyNccl.destroy()` dönüşü ve child process join'i kaydedilir; wrapper'ın timeout'lu abort thread'inin tamamlandığı bağımsız olarak iddia edilmez. Gloo timeout 60s, tüm coordinator grubu için sınır 180s; tekrar yok.
+
+**Mevcut Kaggle notebook'una yeni Code hücresi ekle; yalnız bunu çalıştır, Run All yapma:**
+
+```python
+import subprocess, sys, json
+from IPython.display import display, FileLink
+repo = '/kaggle/working/moe-mechanistic-kaggle-nccl-v0.4.0'
+subprocess.run(['git', 'clone', '--branch', 'nccl-v0.4.0', '--depth', '1',
+    'https://github.com/nourey/moe-mechanistic-kaggle.git', repo], check=True)
+result = subprocess.run([sys.executable, '-B', repo + '/nccl_check.py',
+    '--prior-archive', '/kaggle/working/moe-kernel-20261121T214329Z-7706125c.zip',
+    '--prior-sha256', '0dfecc0f95b55864714f26a2044cbfd0833e4a1ee919e41c9165e9e7bcf7ea47'],
+    text=True, capture_output=True)
+print(result.stdout)
+print(result.stderr)
+result.check_returncode()
+receipt = json.loads(next(s.split(':', 1)[1] for s in reversed(result.stdout.splitlines()) if s.startswith('EVIDENCE_JSON:')))
+display(FileLink(receipt['archive']))
+```
+
+Üretilen `moe-comm-….zip` dosyasını gönder. Model/paket indirilmez, A/B tekrar çalıştırılmaz; önceki oturum yoksa kurulum yapmadan durur. Marker dizileri ve `.npy` çıktılar, native NCCL sürümü/kütüphane adı, actual kaynak özetleri, CUDA izleri, rank stdout/stderr ve önceki B ZIP'i korunur. Tampon baytları uygulama düzeyi boyutlardır; fiziksel link baytları veya bant genişliği değildir. D/E/M ve BLIS kalibrasyonu çalıştırılmaz.
+
+## Önceki A sonucu ve B hazırlığı
 
 `moe-runtime-20261121T212403Z-5a9e8e9a.zip` doğrulandı: CRC, 92/92 iç dosya özeti, 11/11 runner özeti ve önceki başarısız ZIP'in değişmeden taşındığı doğrulandı. İki native CUDA uzantısı yükleniyor; PyTorch `2.13.0+cu130`, vLLM `0.31.0`, Triton `3.7.1`, Transformers `5.17.0`. Yeniden kurulum yok, ana ortamın seçili sürümleri değişmemiş. `wrapt` / `sitecustomize` mesajı hâlâ var; başarılı native komutun stderr'inde korunuyor. Bu mesajı gidermek için paket eklenmedi.
 

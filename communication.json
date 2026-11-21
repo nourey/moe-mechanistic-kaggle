@@ -1,0 +1,18 @@
+{
+  "protocol": "nccl-collective-v0.4",
+  "stage": "C_TWO_GPU_COMMUNICATION_ONLY",
+  "world_size": 2,
+  "elements_per_rank": 4096,
+  "dtype": "float16",
+  "bootstrap_backend": "gloo/FileStore, CPU identity exchange only",
+  "payload_backend": "vLLM PyNcclCommunicator; native NCCL CUDA buffers",
+  "expected_nccl_raw_version": 22907,
+  "group_timeout_seconds": 60,
+  "coordinator_timeout_seconds": 180,
+  "expected_api_source_sha256": {
+    "pynccl.py": "4c51becc2ebfd41910526b93d7bd8e9e36312df444fdfb55fa2fbc92b0f8f88e",
+    "pynccl_wrapper.py": "ce63c8da57bb88d4cf89956bd70bb63f0f44bfad468ddb37b765611551f6d99f"
+  },
+  "source_revision": "db9527a46873454610df6dbedf79a36d6bf1a7f6",
+  "scope": "One fixed-size AllGather and one ReduceScatter SUM; constructor also performs its upstream one-element warmup AllReduce. No AgRsAll2AllManager, ragged/idle token metadata, model loading or serving."
+}
