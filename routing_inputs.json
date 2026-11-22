@@ -1,0 +1,66 @@
+{
+  "protocol": "routing-experiment-v0.8",
+  "prompt_tokens": 32,
+  "max_tokens": 1,
+  "owner": 0,
+  "families": [
+    {
+      "id": "narrative",
+      "screen": "A traveler reached a village beside the river at sunset. The streets were quiet, and a small shop was closing its wooden doors. A traveler reached a village beside the river at sunset. The streets were quiet, and a small shop was closing its wooden doors. A traveler reached a village beside the river at sunset. The streets were quiet, and a small shop was closing its wooden doors. A traveler reached a village beside the river at sunset. The streets were quiet, and a small shop was closing its wooden doors. A traveler reached a village beside the river at sunset. The streets were quiet, and a small shop was closing its wooden doors. ",
+      "evaluate": "A gardener walked through an orchard before sunrise. The trees were still, and a little bird landed beside the old stone wall. A gardener walked through an orchard before sunrise. The trees were still, and a little bird landed beside the old stone wall. A gardener walked through an orchard before sunrise. The trees were still, and a little bird landed beside the old stone wall. A gardener walked through an orchard before sunrise. The trees were still, and a little bird landed beside the old stone wall. A gardener walked through an orchard before sunrise. The trees were still, and a little bird landed beside the old stone wall. "
+    },
+    {
+      "id": "arithmetic",
+      "screen": "Compute each expression carefully: 17 plus 26; 43 minus 19; 8 times 7; 96 divided by 12. Explain the intermediate numbers. Compute each expression carefully: 17 plus 26; 43 minus 19; 8 times 7; 96 divided by 12. Explain the intermediate numbers. Compute each expression carefully: 17 plus 26; 43 minus 19; 8 times 7; 96 divided by 12. Explain the intermediate numbers. Compute each expression carefully: 17 plus 26; 43 minus 19; 8 times 7; 96 divided by 12. Explain the intermediate numbers. Compute each expression carefully: 17 plus 26; 43 minus 19; 8 times 7; 96 divided by 12. Explain the intermediate numbers. ",
+      "evaluate": "Compute each expression carefully: 23 plus 48; 71 minus 35; 9 times 6; 84 divided by 14. Explain the intermediate numbers. Compute each expression carefully: 23 plus 48; 71 minus 35; 9 times 6; 84 divided by 14. Explain the intermediate numbers. Compute each expression carefully: 23 plus 48; 71 minus 35; 9 times 6; 84 divided by 14. Explain the intermediate numbers. Compute each expression carefully: 23 plus 48; 71 minus 35; 9 times 6; 84 divided by 14. Explain the intermediate numbers. Compute each expression carefully: 23 plus 48; 71 minus 35; 9 times 6; 84 divided by 14. Explain the intermediate numbers. "
+    },
+    {
+      "id": "python_code",
+      "screen": "def count_items(values):\n    total = 0\n    for value in values:\n        if value > 3:\n            total += value\n    return total\ndef count_items(values):\n    total = 0\n    for value in values:\n        if value > 3:\n            total += value\n    return total\ndef count_items(values):\n    total = 0\n    for value in values:\n        if value > 3:\n            total += value\n    return total\ndef count_items(values):\n    total = 0\n    for value in values:\n        if value > 3:\n            total += value\n    return total\ndef count_items(values):\n    total = 0\n    for value in values:\n        if value > 3:\n            total += value\n    return total\n",
+      "evaluate": "def sum_scores(records):\n    result = 0\n    for record in records:\n        if record > 5:\n            result += record\n    return result\ndef sum_scores(records):\n    result = 0\n    for record in records:\n        if record > 5:\n            result += record\n    return result\ndef sum_scores(records):\n    result = 0\n    for record in records:\n        if record > 5:\n            result += record\n    return result\ndef sum_scores(records):\n    result = 0\n    for record in records:\n        if record > 5:\n            result += record\n    return result\ndef sum_scores(records):\n    result = 0\n    for record in records:\n        if record > 5:\n            result += record\n    return result\n"
+    },
+    {
+      "id": "multilingual",
+      "screen": "Bir öğrenci sabah kütüphaneye gider. Ensuite elle lit un livre et écrit quelques notes. Later she explains the story to a friend. Bir öğrenci sabah kütüphaneye gider. Ensuite elle lit un livre et écrit quelques notes. Later she explains the story to a friend. Bir öğrenci sabah kütüphaneye gider. Ensuite elle lit un livre et écrit quelques notes. Later she explains the story to a friend. Bir öğrenci sabah kütüphaneye gider. Ensuite elle lit un livre et écrit quelques notes. Later she explains the story to a friend. Bir öğrenci sabah kütüphaneye gider. Ensuite elle lit un livre et écrit quelques notes. Later she explains the story to a friend. ",
+      "evaluate": "Bir öğretmen akşam parka yürür. Ensuite il observe les arbres et prépare quelques questions. Later he describes the scene to a colleague. Bir öğretmen akşam parka yürür. Ensuite il observe les arbres et prépare quelques questions. Later he describes the scene to a colleague. Bir öğretmen akşam parka yürür. Ensuite il observe les arbres et prépare quelques questions. Later he describes the scene to a colleague. Bir öğretmen akşam parka yürür. Ensuite il observe les arbres et prépare quelques questions. Later he describes the scene to a colleague. Bir öğretmen akşam parka yürür. Ensuite il observe les arbres et prépare quelques questions. Later he describes the scene to a colleague. "
+    },
+    {
+      "id": "identifiers",
+      "screen": "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega ",
+      "evaluate": "amber birch cedar dune elm fern grove hazel iris jade kelp lilac moss north olive pine quartz reed sage thyme umber vine willow yarrow amber birch cedar dune elm fern grove hazel iris jade kelp lilac moss north olive pine quartz reed sage thyme umber vine willow yarrow amber birch cedar dune elm fern grove hazel iris jade kelp lilac moss north olive pine quartz reed sage thyme umber vine willow yarrow amber birch cedar dune elm fern grove hazel iris jade kelp lilac moss north olive pine quartz reed sage thyme umber vine willow yarrow amber birch cedar dune elm fern grove hazel iris jade kelp lilac moss north olive pine quartz reed sage thyme umber vine willow yarrow "
+    },
+    {
+      "id": "science",
+      "screen": "A molecule absorbs energy when its electrons move between allowed levels. The observed spectrum depends on the transition energies and the surrounding physical conditions. A molecule absorbs energy when its electrons move between allowed levels. The observed spectrum depends on the transition energies and the surrounding physical conditions. A molecule absorbs energy when its electrons move between allowed levels. The observed spectrum depends on the transition energies and the surrounding physical conditions. A molecule absorbs energy when its electrons move between allowed levels. The observed spectrum depends on the transition energies and the surrounding physical conditions. A molecule absorbs energy when its electrons move between allowed levels. The observed spectrum depends on the transition energies and the surrounding physical conditions. ",
+      "evaluate": "A crystal changes shape when its atoms move under applied stress. The measured response depends on the atomic arrangement and the surrounding physical conditions. A crystal changes shape when its atoms move under applied stress. The measured response depends on the atomic arrangement and the surrounding physical conditions. A crystal changes shape when its atoms move under applied stress. The measured response depends on the atomic arrangement and the surrounding physical conditions. A crystal changes shape when its atoms move under applied stress. The measured response depends on the atomic arrangement and the surrounding physical conditions. A crystal changes shape when its atoms move under applied stress. The measured response depends on the atomic arrangement and the surrounding physical conditions. "
+    }
+  ],
+  "warmup": "A careful observer records the setup, checks the instruments, and waits for the system to return to its initial condition before beginning the next short measurement. A careful observer records the setup, checks the instruments, and waits for the system to return to its initial condition before beginning the next short measurement. A careful observer records the setup, checks the instruments, and waits for the system to return to its initial condition before beginning the next short measurement. A careful observer records the setup, checks the instruments, and waits for the system to return to its initial condition before beginning the next short measurement. A careful observer records the setup, checks the instruments, and waits for the system to return to its initial condition before beginning the next short measurement. ",
+  "screen_count": 6,
+  "compare_blocks": 3,
+  "modes": [
+    "control",
+    "timed",
+    "diagnostic"
+  ],
+  "native_timing_sources": {
+    "vllm/distributed/device_communicators/cuda_communicator.py": "2a0695d8b46757be83b38fe657df605ba0bfb2ef2dfa690c78c57419bbad0762",
+    "vllm/distributed/device_communicators/pynccl.py": "4c51becc2ebfd41910526b93d7bd8e9e36312df444fdfb55fa2fbc92b0f8f88e",
+    "vllm/utils/torch_utils.py": "31e8a695f7efa52584ce20cc33edfb643b70c28ce83d273feb34326c61ab631c"
+  },
+  "selection": "Max mean per-layer expert-count TV; tie-break by mean per-layer rank-count TV, then family IDs. No timings used.",
+  "nonzero_contrast": "Any non-identical expert histograms. This is not an approved practical-effect or statistical threshold.",
+  "partitions": "Screen inputs used only in A. B uses predetermined different evaluation input variants; warmup input is separate. No held-out GPU outcomes used for selection.",
+  "hypotheses": [
+    "At matched request/token/context/grant shapes, routing profiles may differ.",
+    "Observed expert/dispatch/combine intervals may differ, or remain unchanged within small-sample variation. Neither outcome alone establishes causal routing latency effects."
+  ],
+  "caps": "A: 1 diagnostic warmup + 6 screens. B: 3 warmups + 18 fixed episodes. No rate ramp or automatic A-to-B launch.",
+  "timing_limits": "Device stream intervals, not pure network or kernel time; cross-device clocks not aligned. Control leaves routing unobserved; common scheduler/CPU ledger overhead not estimated.",
+  "primary_structural_prediction": "At the same 32-token/owner/grant shapes, AGRS logical payload shapes/bytes remain constant while realized expert histograms can change.",
+  "exploratory_alternatives": {
+    "H0": "Held-out routing contrast exists but observed intervals do not separate beyond recorded repeat variation.",
+    "H1": "Held-out routing contrast co-occurs with repeatable component-interval differences despite matched serving/payload shapes.",
+    "decision_limit": "Three repeats are descriptive; no formal rejection, equivalence, causal timing or essential-state declaration."
+  }
+}

@@ -27,7 +27,7 @@ def main():
     with zipfile.ZipFile(prep['archive']) as z:
         (out / 'SOURCE_COMMIT').write_bytes(z.read('logs/source-commit.stdout'))
     files = ['observe.py', 'owner_reversal.py', 'observation_contract.py', 'observation_scheduler.py',
-             'observation_worker.py', 'observation.json', 'model-qualification.json', 'model-pin.json',
+             'observation_worker.py', 'observation_timing.py', 'observation.json', 'model-qualification.json', 'model-pin.json',
              'model_qualify.py', 'model_observer.py', 'native_model.py', 'runtime-lock.txt', 'prepare_runtime.py', 'diagnose.py']
     (out / 'SOURCE_SHA256SUMS').write_text(''.join(hashlib.sha256((ROOT / n).read_bytes()).hexdigest() + '  ' + n + '\n' for n in files))
     (out / 'source').mkdir()

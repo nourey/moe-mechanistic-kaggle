@@ -1,5 +1,71 @@
 # OLMoE Kaggle ortam tanılaması
 
+## Experiment 2 — Routing dağılımı ve fiziksel yürütme (`routing-v0.8.0`)
+
+**İlk A–B–B–A sonucu korunur; bu yeni bir sorudur.** Aynı owner/request/token/context/grant şekillerinde farklı gerçekleşmiş routing dağılımları, expert/dispatch/combine aralıklarıyla ilişkili mi? Fark görülmemesi de sonuçtur. Prompt içeriğinin farklı olması tek başına routing'in latency farkına neden olduğunu göstermez. Gelecekteki routing tahmini veya BLIS kalibrasyonu yapılmaz.
+
+Model/runtime pinleri, FP16, TP1/PP1/DP2/EP2, Triton/AGRS, eager, DBO/EPLB/APC kapalı ayarlar korunur. Yeni workload alanı **DP0 owner, 32 prompt token, en fazla bir çıktı token'ı**: ana karşılaştırma ilk prefill forward'ıdır; farklı generated decode uzunlukları etkisi azaltılır. EOS politikası değiştirilmez; gerçek 0/1 çıktı ve stop/length sonucu saklanır. Her request'in gerçek owner'ı, pozitif grant'i ve KV release'i doğrulanır.
+
+| Parça | Sabit küçük matris | Amaç |
+|---|---|---|
+| A — discovery | Bir ayrı warmup + altı farklı 32-token içerik, diagnostic mode | Gerçek expert/rank/layer routing kontrastını görmek; tüm 15 çift sonucu saklamak |
+| B — comparison | Üç mode warmup'ı + iki seçilmiş aile × üç tekrar × üç mode = 18 kayıt | Bağımsız input varyantlarında fiziksel interval ve ilerleme karşılaştırması |
+
+Altı önceden yazılmış aile: narrative, arithmetic, Python code, multilingual, identifiers, science. Her ailenin **screen ve evaluate metinleri farklıdır**. A'da evaluation prompt'ları modele verilmez. Seçim önceden tanımlı routing-only kuralıyla yapılır: en büyük ortalama layer expert-histogram TV, eşitlikte layer rank-TV, sonra aile kimlikleri. Süre, terminal metni veya latency seçim kriteri değildir. Tüm histogramlar, layer/rank profilleri ve çift skorları kalır. Non-identical routing pratik veya istatistiksel anlamlılık eşiği değildir.
+
+A sonunda seçilmiş ailelerin farklı evaluation token'ları, code/model/runtime kimliği, driver ve 18 kayıtlık sıra `FROZEN_COMPARISON.json` içinde dondurulur; SHA-256 yazılır. **A, B'yi otomatik başlatmaz.** Sabit sette histogram kontrastı yoksa freeze üretilmez. A ZIP'ini gönder; kontrastın büyüklüğü görülmeden B koşulmaz. B aynı kaynak ve driver'ı ister; stage'ler arasında GPU UUID'leri değişebilir, fakat T4 domain'i ve B içindeki iki GPU sabit kalır. A–B arasında timing karşılaştırılmaz.
+
+### Şimdi yalnız Part A'yı çalıştır
+
+Mevcut Kaggle notebook'unda T4 ×2 / Internet On ile yeni Code hücresi. Run All yapma:
+
+```python
+import subprocess, sys, json
+from pathlib import Path
+from IPython.display import display, FileLink
+repo = '/kaggle/working/moe-mechanistic-kaggle-routing-v0.8.0'
+if not Path(repo).exists():
+    subprocess.run(['git', 'clone', '--branch', 'routing-v0.8.0', '--depth', '1',
+        'https://github.com/nourey/moe-mechanistic-kaggle.git', repo], check=True)
+assert subprocess.check_output(['git', '-C', repo, 'describe', '--exact-match', '--tags', 'HEAD'],
+    text=True).strip() == 'routing-v0.8.0'
+p = subprocess.Popen([sys.executable, '-u', '-B', repo + '/routing_run.py', 'discover'],
+    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+receipt = None
+for line in p.stdout:
+    print(line, end='', flush=True)
+    if line.startswith('EVIDENCE_JSON:'):
+        receipt = json.loads(line.split(':', 1)[1])
+p.wait()
+if receipt:
+    print('Sonuç:', receipt['status'])
+    display(FileLink(receipt['archive']))
+else:
+    raise RuntimeError('Kanıt ZIP kaydı yok; yukarıdaki hatayı gönder.')
+```
+
+Oluşan **`moe-routing-discover-….zip`** dosyasını gönder. Eski ortam yoksa aynı sabit wheel/model geri kurulur; eski qualification tekrarlanmaz. Setup sorunu olursa `moe-model-….zip` hazırlama kanıtı oluşur. Her aşamanın tüm stdout/stderr'i saklanır. Hazırlama en fazla 40 dakika; native stage en fazla 15 dakika. Otomatik alternatif stack veya ek prompt denemesi yok.
+
+### B komutu ve timing sınırları
+
+B uygulaması aynı sürümdedir. A kanıtını inceledikten sonra aşağıdaki komuta gerçek freeze yolu ve hash'i konur; bunlar henüz GPU'dan gelmediği için uydurulmaz:
+
+```text
+python routing_run.py compare --freeze /kaggle/working/<A-output>/FROZEN_COMPARISON.json --freeze-sha256 <A-artifact-sha256>
+```
+
+Bu komut da notebook'un base Python'ıyla başlatılır, kendi doğrulanmış venv'ini kullanır. Hash, source, matrix/input veya driver değişirse main test başlamaz. Farklı stage oturumlarında kayıp freeze dosyası A ZIP'inde korunur. Holdout girdide kontrast kaybolursa null sonuç raporlanır, yeni prompt seçilmez.
+
+* **diagnostic:** mevcut tam routing/contribution kayıtları; GPU timing iddiası yok. NPY contribution snapshot'ları ve KV/request zinciri korunur.
+* **timed:** bütün layer'ların gerçekleşmiş routing'i + aynı-device CUDA event aralıkları; büyük output tensor kopyaları yok. Native expert/dispatch/combine event'leri operasyonun hemen öncesi/sonrasında, GPU→CPU okuması yalnız terminal + drain sonrası. Forward aralığı küçük routing snapshot ve marker overhead'ini de içerir. Expert ve communication aralıkları queue/peer wait ve host enqueue boşluğu içerebilir; saf kernel/network süresi değildir.
+* **control:** yardımcı overhead kontrolü. Aynı request/scheduler/KV ve worker submission ledger'ı var; GPU routing/timing tap'leri kapalı. **Routing UNOBSERVED**, başka koşudan doldurulmaz. Bu kayıtlar routing değerlendirme epizotları sayılmaz; common CPU ledger/hook overhead'ini de ölçmez. Tamamen instrumentation-free baseline iddiası yok.
+
+Yeni timer yeteneği her rank'te bir kez küçük CUDA event/elementwise sanity ile sınanır; PyNccl active ve native/Torch current stream eşleşmesi kontrol edilir. Kaynakta PyNccl AGRS aynı current stream'i kullanır; 18 native source dosyası doğrulanır. Event readiness, stream uyumu ve aynı-stream interval toplamının forward sınırında kalması denetlenir. Sorunda timing `UNSUPPORTED/None` olur; yapısal routing kayıtları korunur. Önceki profiler thread sorunu bu yöntemle çözülmüş sayılmaz; profiler kullanılmaz. Absolute clock doğruluğu/resolution ve cross-GPU clock alignment kalibre edilmez. Sıfır event süresi yokluk veya sıfır iş değildir.
+
+B'de sırası önceden döndürülen üç blok kullanılır. Medyan, min/max, MAD ve ham örnekler saklanır; üç tekrar CI, equivalence veya nedensellik kanıtı değildir. Client-window farkları timed/control/diagnostic için eşlenir, negatif farklar korunur; bu incremental overhead proxy'sidir, zamanlara correction uygulanmaz. Clock/power/temperature snapshot'ları timing penceresi dışında alınır; alınamazsa UNOBSERVED kalır. GPU clock/cache, aktivasyon içeriği ve common ledger overhead'i alternatif açıklamalardır.
+
+**Kabul:** geçerli input/owner/grant/KV cleanup/routing/dataflow ve eksiksiz sabit matris. PASS veri toplama kapsamıdır; latency farkı veya essential-state kabulü değildir. Eksik join/drift/cleanup yapısal başarısızlıktır; sonraki epizot durur. Routing kontrastı olmayabilir veya süreler küçük örneklem varyasyonuyla örtüşebilir: tüm null sonuçlar saklanır. Timing yetersizse PARTIAL; BLIS/Qwen/DeepEP/D2/G0/milestone kabulü yok. M1-002 IN_PROGRESS ve G0 unapproved kalır.
+
 ## 22 Kasım: ilk A–B–B–A mekanistik gözlem — bounded PASS
 
 `moe-observation-20261122T164710Z-5ebcfc6e.zip` yeniden incelendi: **67/67 içerik, 14/14 deney kaynağı ve 15/15 native kaynak hash'i** doğrulandı. Kaynak `f1acf515d012b33060ad39261770cad4d2aff311` / `observation-v0.7.0`. Arşiv SHA-256: `9f1256a2a236753b6976051af7c5c95b0bf6400161298689dd0c88ef90694966`. Ham ZIP özel yerel inceleme alanında korunur; bu depoya yüklenmez.
