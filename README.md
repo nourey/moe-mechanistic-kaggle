@@ -1,5 +1,17 @@
 # OLMoE Kaggle ortam tanılaması
 
+## 22 Kasım fiziksel sonuç: D PASS, sınırlı E inference PASS
+
+`moe-model-20261122T081958Z-585359fe.zip` incelendi: ZIP CRC, **50/50 içerik ve 8/8 kaynak hash'i** eşleşiyor. Arşiv SHA-256: `eb75ee3b092313effa3ec16cf0f11227b8b7fc21d4dab41d44cb02fa8ec3fe87`. Koşan kaynak `olmoe-v0.6.0` / `cbed9137d07c7d2a68ba55b655273d297eb5b66b`; 199 paket wheel hash'i ve dokuz model dosyasının indirme receipt'i sabitlenmiş kaynaklarla tutarlı. Model ağırlıkları ZIP içinde değildir; Mac'te yeniden indirilip hash'lenmedi.
+
+**Gerçek OLMoE FP16, TP1/PP1/DP2/EP2 çalıştı.** İki T4 üzerinde ayrı worker'lar, her biri 16 MoE katmanı ve katman başına 32 expert gösteriyor. Native expert haritaları 0–31 / 32–63 olarak ayrılıyor; çakışan veya sahipsiz global expert yok. İki rank'in her birinde 2.237 blok / 4.691.329.024 bayt KV kapasitesi var. Model yükleme logu rank başına 6,89 GiB raporluyor. Gerçek backend `TRITON_ATTN`, TritonExperts ve `AgRsAll2AllManager`.
+
+`qual-dp0` ve `qual-dp1` istekleri normal `length` sonucu ile **8'er token** üretti. Worker PID ve CUDA cihazıyla eşlenen ham izlerde **her GPU'da 288 MoE, 128 AllGather, 48 AllGatherV ve 128 ReduceScatter** kernel olayı yeniden sayıldı. Collectiveler yalnız yapılandırılmış değil, GPU'da yürütülmüş. Seçilen NCCL kanalı yine `SHM/direct/direct`; doğrudan GPU P2P/NVLink/RDMA iddiası yok. Dört native `Abort COMPLETE` kaydı ve shutdown dönüşü mevcut.
+
+**Tam E ownership qualification hâlâ açık:** explicit DP rank hint, bağımsız runtime request→rank binding receipt'i değildir. KV kapasitesi, request-owned KV tahsis/serbest bırakma geçmişi değildir. Profiler'da `External init callback must run in same thread as registerClient` hatası korunuyor; mevcut kernel olayları doğrulanabilir, profil tamlığı/zamanlama doğruluğu kabul edilmiş değil. FA2'nin SM75 reddi sonrası Triton seçilmesi ve tuning/sampling uyarıları başarısız inference sayılmıyor; bunlardan performans kabulü de çıkmıyor.
+
+Bu yalnız gerçek tek-grup FP16/AGRS functional kanıtıdır; BLIS mekanistik model doğrulaması, P/D NIXL, Qwen/DeepEP, Q/G0 veya kalibrasyon değildir. **Bu koşuyu tekrar çalıştırma; mümkünse mevcut Kaggle oturumunu/venv/model cache'ini koru.** Sıradaki eksik kanıt request/scheduler/KV sahipliği geçişleridir; A/B/C ve kurulum tekrarına gerek yok. Aşağıdaki v0.6.0 komutları bu tamamlanmış koşunun yeniden üretim talimatıdır.
+
 ## Güncel adım: gerçek OLMoE yükleme ve koşullu küçük EP2 inference — `olmoe-v0.6.0`
 
 `moe-storage-20261122T074215Z-763f1ffd.zip` doğrulandı: ZIP CRC, 3/3 içerik özeti ve 4/4 kaynak özeti eşleşiyor. ZIP SHA-256: `9c766032a07c8bb0829e1edf1812ead62783e5d0c6b8446c703efb56487fda58`. Yeni oturumda eski venv yok. `/kaggle/working` yaklaşık 19,5 GiB boş; `/kaggle/temp` için ölçülen üst dizin farklı bir dosya sisteminde ve küçük yazma testi geçti. Bildirilen TB boş alan kullanıcı kotası kanıtı değildir. RAM cgroup limiti 30 GiB. Aşağıdaki sürüm yeni oturum içindir; eski A/B/C komutlarını veya Run All'ı tekrar kullanma.
