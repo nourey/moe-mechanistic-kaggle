@@ -1,5 +1,50 @@
 # OLMoE Kaggle ortam tanılaması
 
+## Güncel adım: gerçek OLMoE yükleme ve koşullu küçük EP2 inference — `olmoe-v0.6.0`
+
+`moe-storage-20261122T074215Z-763f1ffd.zip` doğrulandı: ZIP CRC, 3/3 içerik özeti ve 4/4 kaynak özeti eşleşiyor. ZIP SHA-256: `9c766032a07c8bb0829e1edf1812ead62783e5d0c6b8446c703efb56487fda58`. Yeni oturumda eski venv yok. `/kaggle/working` yaklaşık 19,5 GiB boş; `/kaggle/temp` için ölçülen üst dizin farklı bir dosya sisteminde ve küçük yazma testi geçti. Bildirilen TB boş alan kullanıcı kotası kanıtı değildir. RAM cgroup limiti 30 GiB. Aşağıdaki sürüm yeni oturum içindir; eski A/B/C komutlarını veya Run All'ı tekrar kullanma.
+
+**Önce Kaggle'da GPU T4 ×2 ve Internet On seç. Sonra yalnız aşağıdaki hücreyi çalıştır.** Ayar değişikliği yeni oturum açarsa sorun değil; eski venv veya ZIP gerekmiyor.
+
+```python
+import subprocess, sys, json
+from pathlib import Path
+from IPython.display import display, FileLink
+repo = '/kaggle/working/moe-mechanistic-kaggle-olmoe-v0.6.0'
+if not Path(repo).exists():
+    subprocess.run(['git', 'clone', '--branch', 'olmoe-v0.6.0', '--depth', '1',
+        'https://github.com/nourey/moe-mechanistic-kaggle.git', repo], check=True)
+subprocess.run(['git', '-C', repo, 'describe', '--exact-match', '--tags', 'HEAD'], check=True)
+result = subprocess.Popen([sys.executable, '-u', '-B', repo + '/model_qualify.py'],
+    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+receipt = None
+for line in result.stdout:
+    print(line, end='', flush=True)
+    if line.startswith('EVIDENCE_JSON:'):
+        receipt = json.loads(line.split(':', 1)[1])
+result.wait()
+if receipt:
+    display(FileLink(receipt['archive']))
+else:
+    raise RuntimeError('Kanıt ZIP kaydı yok; yukarıdaki hatayı gönder.')
+```
+
+İndirilecek **`moe-model-….zip`** dosyasını geri gönder. Kurulum/model indirme dahil toplam süre üst sınırı 40 dakika; her aşama adı anında görünür. Hata olursa otomatik sürüm değiştirme veya ikinci kurulum denemesi yok. Yalnız tamamlanmış ve aynı lock ile doğrulanmış kendi venv'ini tekrar kullanabilir; eksik/başka venv'i üzerine yazmaz. Özgün ZIP'ler ve diğer ortamlar silinmez.
+
+Bu adım yaklaşık 9 GB izole runtime ile 13.841.130.907 bayt sabitlenmiş checkpoint/tokenizer indirir. Aynı 20 GB diske birlikte sığmaları varsayılmaz: model **`/kaggle/temp/moe-mechanistic-1525`** altına, venv `/kaggle/working` altına yazılır. Farklı filesystem, canlı boş alan ve yazma kontrolü zorunlu; gerçek kota/indirme hatasında durur. Model ve venv kanıt ZIP'ine dahil edilmez. Ana Python ortamı değiştirilmez; seçili ana paket sürümleri önce/sonra karşılaştırılır.
+
+`runtime-lock.txt`, önceki kurulum raporundaki 199 wheel'in sürüm ve SHA-256'larını dondurur. Yalnız Linux x86_64 / Python 3.13 kabul edilir. Yeni venv, pip seeding ve kurulum yalnız resmi PyPI binary artifact'leriyle yapılır. `pip check`, wheel raporu, gerçek CUDA ordinal–GPU UUID eşlemesi ve native importlar yeniden kontrol edilir; sentetik B/C deneyleri tekrarlanmaz. Önceki nonfatal `sitecustomize / wrapt` uyarısı otomatik ana ortam değişikliği gerekçesi değildir.
+
+### Sınırlı kabul ve kanıtın anlamı
+
+* **D:** Native `AsyncLLM` ile TP1/PP1/DP2/EP2; gerçek OLMoE revision `6d84c48581ece794365f2b8e9cfb043c68ade9c5`, FP16, Triton MoE, `allgather_reducescatter`. Tek süreçli `LLM(DP2)` bu sürümde desteklenmediğinden kullanılmaz. Şardlar indirme sonrası streaming hash ile doğrulanır; LFS pointer Git hash'i tensor içeriğinin hash'i sayılmaz.
+* Her worker'ın mevcut named extension/RPC arayüzü yalnız okuma için kullanılır: GPU UUID/PID, native DP/EP grupları, 16 katmandaki gerçek global→local expert haritaları ve GPU KV kapasitesi. İki rank'te 32+32 sayısını toplamak yeterli değildir; her global expert'in tam bir rank sahibi olmalıdır. GPU KV kapasitesi request allocation/ownership ledger değildir. Worker PID, EngineCore incarnation nonce değildir.
+* **Koşullu küçük E functional smoke:** D geçerse iki rank-hint'li istek, her biri en fazla 8 token. Native terminal kayıtları ve worker PID/device ile eşlenen CUDA MoE/AllGather/ReduceScatter izleri saklanır. Genel NCCL koordinasyon kernel'i payload collective kanıtı sayılmaz. Eksik profiler eşlemesi veya farklı/variable-size payload yolu `PARTIAL` kalır. Explicit DP hint + kaynak seçici, bağımsız runtime request→engine binding receipt'i yerine sunulmaz. Tam E scheduler/KV/request-ownership qualification henüz kapanmaz.
+* Model kaynakları değiştirilmez. `VLLM_ALLOW_INSECURE_SERIALIZATION=0`; arbitrary pickled RPC callback kullanılmaz. Worker extension constructor, inference override, network veya background loop içermez. Eager/512-token/four-sequence limitleri functional test sınırlarıdır; performans ayarı, araştırma SLO'su veya kalibrasyon değildir.
+* DBO/EPLB/prefix-cache kapalı. Warmup ve JIT süreleri ölçüm amaçlı değildir. Normal shutdown dönüşü kaydedilir; timeout/kill veya dönüş tek başına fiziksel graceful-drain kanıtı sayılmaz. OLMoE FP16/AGRS, Qwen BF16/DeepEP veya dört/altı-GPU Q kabulü değildir. M1-002/G0 durumları değiştirilmez.
+
+Aşağıdaki bölümler önceki sürümlerin tarihsel talimatlarıdır; güncel oturumda bunları tekrar çalıştırma.
+
 ## İletişim C PASS — model için kalan ilk önkoşul: depolama
 
 `moe-comm-20261121T221312Z-3bde775e.zip` doğrulandı: CRC, 25/25 dosya ve 17/17 kaynak özeti eşleşiyor. Ham FP16 NPY dosyalarından her rank'te 8.192 AllGather ve 4.096 ReduceScatter değeri yeniden kontrol edildi; uzak veri, sıra ve destination rank sahipliği doğru. CUDA izlerinde her cihazda gerçek `ncclDevKernel_AllGather_RING_LL` ve `ncclDevKernel_ReduceScatter_Sum_f16_RING_LL` var. Mevcut vLLM PyNccl API dosyaları pinned kaynakla eşleşiyor. NCCL `2.29.7+cuda13.2` raporlanmış; PyTorch build CUDA `13.0` etiketi ayrı bir gözlemdir. Bu koşulda iki primitive başarıyla çalıştı; tüm CUDA stack kombinasyonlarına genellenmez.

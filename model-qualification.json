@@ -1,0 +1,51 @@
+{
+  "protocol": "olmoe-native-v0.6",
+  "runtime_cohort_evidence_sha256": "d58dd1416e8fbc20105f82e2b6dd8d418fcb2c3ec7c615ed8445a9ca207e2772",
+  "runtime_lock_sha256": "3713cff8f0c02e5e5c77d5b0ec5271c9c4cf565aea50583d08f86387f6f2e558",
+  "runtime_packages": 199,
+  "seed_pip_version": "26.2.2",
+  "seed_pip_sha256": "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70",
+  "model_cache_root": "/kaggle/temp/moe-mechanistic-1525",
+  "total_timeout_seconds": 2400,
+  "install_timeout_seconds": 900,
+  "download_timeout_seconds": 1200,
+  "model_timeout_seconds": 900,
+  "engine_args": {
+    "dtype": "half",
+    "tensor_parallel_size": 1,
+    "pipeline_parallel_size": 1,
+    "data_parallel_size": 2,
+    "data_parallel_size_local": 2,
+    "data_parallel_backend": "mp",
+    "enable_expert_parallel": true,
+    "all2all_backend": "allgather_reducescatter",
+    "moe_backend": "triton",
+    "enable_eplb": false,
+    "enable_dbo": false,
+    "enforce_eager": true,
+    "enable_prefix_caching": false,
+    "max_model_len": 512,
+    "max_num_seqs": 4,
+    "max_num_batched_tokens": 512,
+    "gpu_memory_utilization": 0.8,
+    "seed": 1525,
+    "trust_remote_code": false,
+    "worker_extension_cls": "model_observer.ReadOnlyRankState"
+  },
+  "requests": [
+    {
+      "request_id": "qual-dp0",
+      "data_parallel_rank": 0,
+      "prompt": "The capital of France is",
+      "max_tokens": 8
+    },
+    {
+      "request_id": "qual-dp1",
+      "data_parallel_rank": 1,
+      "prompt": "The sum of two and two is",
+      "max_tokens": 8
+    }
+  ],
+  "scope": "D: real model residency/expert-map/KV-capacity qualification. Conditional small E functional generation; full scheduler/request KV ownership ledger and performance remain unsupported.",
+  "resources_note": "Operational functional-test limits, not SLO thresholds or calibration settings. Download/store weights outside working; statvfs free space is not a quota guarantee."
+}
