@@ -119,7 +119,7 @@ def validate_cuda_identity(devices, nvrows):
     return ids  # CUDA order is authoritative, not nvidia-smi row order.
 
 
-def qualify(output_root, execute=runtime.run, work_root=None):
+def qualify(output_root, execute=runtime.run, work_root=None, prepare_only=False):
     config = json.loads((ROOT / 'model-qualification.json').read_text())
     lock = (ROOT / 'runtime-lock.txt').read_bytes()
     now = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
@@ -209,8 +209,13 @@ def qualify(output_root, execute=runtime.run, work_root=None):
         if usage.free < 15 * 1024 ** 3: raise RuntimeError('Less than 15 GiB model-cache space reported')
         capture('model-acquisition', [py, ROOT / 'model_qualify.py', '--acquire', '--cache', cache, '--output', out], config['download_timeout_seconds'])
         model_path = json.loads((out / 'model-acquisition.json').read_text())['model_path']
-        capture('native-model', [py, ROOT / 'native_model.py', '--output', out, '--model-path', model_path,
-                '--gpu-ids', json.dumps(ids)], config['model_timeout_seconds'])
+        if prepare_only:
+            status.update(runtime_and_checkpoint='READY', python=str(py), model_path=model_path, gpu_ids=ids,
+                          preparation_only=True, model_qualification_repeated=False,
+                          D_MODEL_RESIDENCY='NOT_REPEATED', E_FUNCTIONAL_GENERATION='NOT_REPEATED')
+        else:
+            capture('native-model', [py, ROOT / 'native_model.py', '--output', out, '--model-path', model_path,
+                    '--gpu-ids', json.dumps(ids)], config['model_timeout_seconds'])
     except Exception:
         status['error'] = safe_log(traceback.format_exc())
     finally:

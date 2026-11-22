@@ -1,5 +1,57 @@
 # OLMoE Kaggle ortam tanılaması
 
+## Sıradaki onaylı deney: A–B–B–A ownership gözlemi — `observation-v0.7.0`
+
+**Bu sürüm yerelde doğrulandı; yeni gözlem yolunun gerçek GPU sonucu henüz yok.** Aynı model revision'ı, FP16, TP1/PP1/DP2/EP2, Triton/AGRS ve APC-kapalı konfigürasyon korunur. vLLM kaynak dosyaları veya paket lock'u değiştirilmez. Native olarak çözülen sync/async scheduler sınıfının observation-only alt sınıfı seçilir; effective async setting ve concurrent-batch sınırları aynı kalmazsa deney durur.
+
+Tek model başlangıcında dört izole epizot: **DP0 → DP1 → DP1 → DP0**. Aynı tokenizer'dan üretilmiş ve kaydedilmiş 32 token, greedy sampling, aynı seed ve en fazla 8 çıktı token'ı. EOS kapatılmaz; gerçekleşmiş uzunluk gelecekte bilinen input değildir. Her epizottan sonra native drain, request-owned KV referanslarının bırakılması ve free-population başlangıç tabanına dönüşü doğrulanmadan sıradakine geçilmez.
+
+Kaggle'da **T4 ×2 / Internet On** ile yalnız aşağıdaki hücreyi çalıştır. Önceki notebook'un tamamını yeniden çalıştırma.
+
+```python
+import subprocess, sys, json
+from pathlib import Path
+from IPython.display import display, FileLink
+repo = '/kaggle/working/moe-mechanistic-kaggle-observation-v0.7.0'
+if not Path(repo).exists():
+    subprocess.run(['git', 'clone', '--branch', 'observation-v0.7.0', '--depth', '1',
+        'https://github.com/nourey/moe-mechanistic-kaggle.git', repo], check=True)
+assert subprocess.check_output(['git', '-C', repo, 'describe', '--exact-match', '--tags', 'HEAD'],
+    text=True).strip() == 'observation-v0.7.0'
+process = subprocess.Popen([sys.executable, '-u', '-B', repo + '/observe.py'],
+    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+receipt = None
+for line in process.stdout:
+    print(line, end='', flush=True)
+    if line.startswith('EVIDENCE_JSON:'):
+        receipt = json.loads(line.split(':', 1)[1])
+process.wait()
+if receipt:
+    print('Sonuç:', receipt.get('status'))
+    display(FileLink(receipt['archive']))
+else:
+    raise RuntimeError('Kanıt ZIP kaydı yok; yukarıdaki hatayı gönder.')
+```
+
+**Oturum devam ediyorsa:** hash doğrulanmış mevcut venv ve checkpoint cache kullanılır; A/B/C ve eski iki-request model qualification tekrarlanmaz. **Oturum bittiyse:** aynı 199-wheel lock ve checkpoint revision'ı izole alanda bir kez geri kurulur; alternatif sürüm/stack denenmez. Bu yeniden indirme gerektirebilir. Tamamlanmamış veya yabancı ortamın üzerine yazılmaz. Hazırlama üst sınırı 40 dakika, native gözlem üst sınırı 15 dakika; setup/yapısal ownership veya cleanup hatasında tam log/ZIP ile durur. Remote link belirsiz fakat ownership/cleanup sağlamsa dört sabit epizot da korunur; input değiştirilerek tekrar denenmez. Hazırlama sonucunda `NOT_REPEATED`, eski qualification'ın tekrar çalıştırılmadığını anlatır.
+
+### Toplanan fiziksel zincir ve sınırları
+
+* `request-identity-joins.json`: native `assign_request_id` çıktısından dış→iç request ID. Rastgele suffix'ten isim eşleştirmesi yapılmaz.
+* `core-dp*.jsonl`: gerçek EngineCore sürecindeki scheduler kabulü/PID/rank, decision kimliği, queue/request durumu, positive grants, submitted/optimistic frontier ve output-applied frontier. Allocator hook'ları allocation sonucu, request blokları/refcounts ve free olaylarını kaydeder. Olay sırası native policy'yi değiştirmez; kayıtların fiziksel overhead'i sıfır kabul edilmez.
+* `episode-*-worker-dp*.json`: gerçek worker submission, native request ID/grants, token ID/pozisyonları, dummy-run flag'i, DP gather layout'u, 16 katmanın post-gate top-k seçimleri, yerleşim haritaları, expert/dispatch/combine call'ları ve CUDA completion marker'ları. Native dummy SchedulerOutput'un pozitif token kayıtları request grant'i sayılmaz.
+* `*-layer0-partial.npy` / `*-layer0-combined.npy`: yalnız ilk prompt forward'ının ilk katmanı için iki rank'in gerçek combine öncesi FP16 katkıları ve combine çıktıları. Stdlib verifier, owner chunk'ını iki katkının FP16 toplamıyla **tam eşitlikte** karşılaştırır; remote katkıyı yok sayan negatif kontrolün farklı sonuç vermesi gerekir. Tolerans uydurulmaz. Diğer katmanlarda routing ve contribution row özetleri tutulur.
+* `episode-*-assessment.json`: request→scheduler→worker-position join'i, KV release, first-prompt routing/layout join'leri ve sayısal combine karşılaştırması. Cross-rank local forward sayacı veya eşit timestamp join için kullanılmaz. Tekrarlanan routing belirsizse eşleştirme yapılmaz. Yeterli karşı-rank iş yoksa `INSUFFICIENT_EXCITATION`; eksik/çelişkili bağ `UNVERIFIED/PARTIAL/BLOCKED` kalır.
+* `native-sources.json`, `configuration.json`, `workload.json`, `command.json`, `SOURCE_SHA256SUMS`, `SHA256SUMS`, stdout/stderr: seçili 15 native dosyanın pinned-source kimliği, wheel/checkpoint hazırlama kanıtı, gerçek workload, sürümler, komut ve exit code.
+
+Tap noktası bu sürümün gerçek modular yoludur: `prepare/AGRS dispatch → TritonExperts.apply(output=...) → NoOP weight/reduce → AGRS combine`. Daha üstteki `RoutedExperts.forward_modular` zaten combine sonrası döndüğünden local contribution diye kaydedilmez. Farklı kernel/prepare/finalize sınıfı gelirse alternatif yorum yapılmadan durulur.
+
+CUDA tensor snapshot'ları epizot sırasında cihazda tutulur; CPU'ya yalnız terminal + group drain sonrasında alınır. Her katmanda host senkronizasyonu veya tam profiler yok; yalnız drain sonunda son marker beklenir. GPU completion marker'ları süre ölçmez. Native çağrı dönüşü ile GPU tamamlanması ayrı tutulur. Tensor pointer join'i yalnız aynı worker/PID/GPU namespace'i içindedir.
+
+**PASS kapsamı:** dört kısa epizotta en az bir doğrulanmış gerçek-token/remote-expert/combine ilişkisi, doğru request ownership ve cleanup. Native combine'ın owner ilerlemesine bağımlılığı gözlem + sabitlenmiş native kod semantiğiyle açıklanır; rank'i kapatan ablation veya critical-path süresi ölçülmez. Ek GPU kopyalarının zamanlama etkisi kalibre edilmedi; observer-on/off performans eşdeğerliği iddiası yok. Gelecekteki routing tahmini, bottleneck, BLIS kalibrasyonu, Qwen/DeepEP, D2, M1-002/G0 kabulü kapsam dışı.
+
+Oluşan **`moe-observation-….zip`** dosyasını gönder. Hazırlık engellenirse bunun yerine `moe-model-….zip` hazırlama kanıtı oluşur; o ZIP'i gönder. Ham model ağırlıkları/venv arşive girmez. Mevcut kanıtlar ve eski tag'ler korunur.
+
 ## 22 Kasım fiziksel sonuç: D PASS, sınırlı E inference PASS
 
 `moe-model-20261122T081958Z-585359fe.zip` incelendi: ZIP CRC, **50/50 içerik ve 8/8 kaynak hash'i** eşleşiyor. Arşiv SHA-256: `eb75ee3b092313effa3ec16cf0f11227b8b7fc21d4dab41d44cb02fa8ec3fe87`. Koşan kaynak `olmoe-v0.6.0` / `cbed9137d07c7d2a68ba55b655273d297eb5b66b`; 199 paket wheel hash'i ve dokuz model dosyasının indirme receipt'i sabitlenmiş kaynaklarla tutarlı. Model ağırlıkları ZIP içinde değildir; Mac'te yeniden indirilip hash'lenmedi.

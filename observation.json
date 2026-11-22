@@ -1,0 +1,32 @@
+{
+  "protocol": "owner-reversal-v0.7",
+  "native_source_revision": "db9527a46873454610df6dbedf79a36d6bf1a7f6",
+  "native_source_sha256": {
+    "vllm/v1/core/sched/scheduler.py": "f820bee4f42b878b262a30f3728a97d7413477b2a277748e20f2528ac2ec2f2a",
+    "vllm/v1/core/sched/async_scheduler.py": "38d296e77e4d612e696241c67298eb1ca9b6a48b483cd33d35495bf31691032e",
+    "vllm/v1/core/kv_cache_manager.py": "bd9bf46a2101f9368d4941867415a239d18d95e0b956f82f885ce25e10e69f3b",
+    "vllm/v1/core/kv_cache_coordinator.py": "6a1e00227b981a7bb6108a42db0e446c716f789274f40c63eb9a6ce4d699ddcb",
+    "vllm/model_executor/layers/fused_moe/routed_experts.py": "78bff37911f17cb4cf77a09861dd11fc9bdbf59e7dadb422b4f3fe9e9d526812",
+    "vllm/model_executor/layers/fused_moe/runner/moe_runner.py": "2c6e1fffba1f4fd2e4c5d3981c4d26f7c0de802fc9c35865748b113c30235da5",
+    "vllm/distributed/device_communicators/all2all.py": "e1671a092d64fa75e370680a4951d00c64a7d839e1e954ff16c6cf5d82350c8d",
+    "vllm/forward_context.py": "8dab5a4dee60e46c4e52821667321c9f05c793578af49cddbdb204cf9324c403",
+    "vllm/v1/engine/input_processor.py": "d79601e4a053a7bacb0d6a23e273348435e4ab70c6a315dcccb2d428ed57d96b",
+    "vllm/v1/worker/gpu/model_runner.py": "725c47114e148ade3a26b4cc9c5f7295588fdd387afc3cb5fdb2d16513a1bb5c",
+    "vllm/model_executor/layers/fused_moe/unquantized_fused_moe_method.py": "dade56ddeef4967aa3ad3448ef46d964e6130a6f3d558e4a77ccce62303816a9",
+    "vllm/model_executor/layers/fused_moe/modular_kernel.py": "b8dce8f9af0545c080d8d761bd12a60b607ed84eafbaf89a6f8020040df7d6ce",
+    "vllm/model_executor/layers/fused_moe/experts/triton_moe.py": "ee6b83b108a0460e6308e35447434165d0778a053aa39f0c6c8ed7f36a3ddbab",
+    "vllm/model_executor/layers/fused_moe/prepare_finalize/naive_dp_ep.py": "5cc53791999bc0116f8d9d5a4658f8b39f53f59c1b7d644219cf4655011e29c4",
+    "vllm/model_executor/layers/fused_moe/topk_weight_and_reduce.py": "9bc42770a8add295f056dfe429e6c51d8ea6c9f9956bf98f468672323e80e49d"
+  },
+  "owners": [
+    0,
+    1,
+    1,
+    0
+  ],
+  "prompt_tokens": 32,
+  "max_output_tokens": 8,
+  "APC": false,
+  "observation_scope": "Post-gate descriptive execution lineage; no future routing prediction or performance calibration",
+  "stop": "Stop on structural ownership/cleanup failure or unsupported instrumentation. Preserve unverified remote links across the four unchanged episodes; never guess joins or repeat installation."
+}
