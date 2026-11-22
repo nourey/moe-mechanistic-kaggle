@@ -1,5 +1,19 @@
 # OLMoE Kaggle ortam tanılaması
 
+## 22 Kasım: ilk A–B–B–A mekanistik gözlem — bounded PASS
+
+`moe-observation-20261122T164710Z-5ebcfc6e.zip` yeniden incelendi: **67/67 içerik, 14/14 deney kaynağı ve 15/15 native kaynak hash'i** doğrulandı. Kaynak `f1acf515d012b33060ad39261770cad4d2aff311` / `observation-v0.7.0`. Arşiv SHA-256: `9f1256a2a236753b6976051af7c5c95b0bf6400161298689dd0c88ef90694966`. Ham ZIP özel yerel inceleme alanında korunur; bu depoya yüklenmez.
+
+Gerçek EngineCore owner sırası **DP0–DP1–DP1–DP0**, her request için grant'ler `[32,1,1,1,1,1,1,1]`, sekiz normal çıktı token'ı ve üç request-owned KV bloğunun refcount=0 ile release'i doğrulandı. Free population her epizotta 2.236 başlangıcına döndü; 2.237 kapasite ile fark native permanent null block'tur. Aynı request kimlikleri worker input/position ve output-application olaylarıyla bağlandı; rank hint'i tek başına kanıt sayılmadı.
+
+**Request/KV owner değişirken expert atamaları aynı kaldı.** Gerçek 32 prompt token'ının 16 katmandaki top-k seçimleri dört epizotta birebir aynı: toplam 4.096 atamanın 2.030'u rank 0, 2.066'sı rank 1 expert'lerine gidiyor. Bunlar assignment sayılarıdır, compute süresi değildir. Dummy satırın expert ID'leri `-1`; gerçek işe dahil edilmedi.
+
+İlk prompt forward'ının ilk katmanında ham NPY dosyalarından **4 × 65.536 = 262.144 değer** bağımsız stdlib parser/FP16 addition ile yeniden kontrol edildi: native combine sonucu iki yerel katkının FP16 toplamına tam uyuyor, mismatch=0. Remote katkı atlanınca A epizotlarında 65.518, B epizotlarında 65.514 değer değişiyor. Fixed-rank gerçek-token partial payload'ları ve owner'ın combined payload'ı, owner reversal boyunca bit düzeyinde aynı. Dört çıktı token dizisi de aynı. Böylece request'i olmayan rank'in gerçek token sonucuna sayısal expert katkısı verdiği bu sınırlı koşuda destekleniyor.
+
+Her epizotta owner'ın sekiz gerçek ve sekiz dummy forward'ı, non-owner'ın on altı dummy forward'ı var; owner'da ayrıca iki no-layer execute çağrısı tutulmuş. Bunlar zaman eşitliğinden türetilmiş ortak bir step takvimi değildir. Computed frontier=39 ve output=8 normal autoregressive sınırdır: son üretilen token tekrar modele sokulmamıştır.
+
+**Sınırlar:** tam sayısal katkı kontrolü yalnız ilk prompt katmanında; 16 katmanın routing/dataflow kaydı bulunuyor. Zamanlama, critical path, overhead/non-interference, baskı, preemption/abort, başka içerikler/topolojiler, routing tahmini ve BLIS doğruluğu değerlendirilmedi. Profiler kapalı; eski thread hatasının bu koşuda görünmemesi profiler sorununun çözüldüğünü göstermez. Qwen/DeepEP, P/D, D2, Q/G0 veya milestone kabulü değil. **Bu epizotları tekrar çalıştırmaya gerek yok.** Aşağıdaki v0.7.0 komutları tamamlanmış deneyin yeniden üretim talimatlarıdır.
+
 ## Sıradaki onaylı deney: A–B–B–A ownership gözlemi — `observation-v0.7.0`
 
 **Bu sürüm yerelde doğrulandı; yeni gözlem yolunun gerçek GPU sonucu henüz yok.** Aynı model revision'ı, FP16, TP1/PP1/DP2/EP2, Triton/AGRS ve APC-kapalı konfigürasyon korunur. vLLM kaynak dosyaları veya paket lock'u değiştirilmez. Native olarak çözülen sync/async scheduler sınıfının observation-only alt sınıfı seçilir; effective async setting ve concurrent-batch sınırları aynı kalmazsa deney durur.
