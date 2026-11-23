@@ -65,19 +65,34 @@ def configure(engine_args, limit, observer, scheduler_kind, async_scheduling):
         result.update(scheduler_cls='observation_scheduler.Observed' + scheduler_kind,
                       worker_extension_cls='observation_worker.ObservationWorker')
     else:
-        result.pop('scheduler_cls', None)
+        result['scheduler_cls'] = 'observation_scheduler.OwnershipOnly' + scheduler_kind
         result['worker_extension_cls'] = 'model_observer.ReadOnlyRankState'
     return result
 
 
-def process_members(worker_receipts, frontend_pid):
-    """Read-only PID tracking, never signal the frontend or unrelated processes."""
-    members = set()
-    for pid, receipt in worker_receipts.items():
-        if not receipt.get('present') or receipt.get('parent_pid') in (None, 0, 1):
-            raise ValueError('Worker parent provenance unavailable')
-        members.update((int(pid), receipt['parent_pid']))
-    return sorted(members - {frontend_pid})
+def verify_owners(stage, core, client, joins, inputs, loaded):
+    offers = {e['request_id']: e for e in client if e.get('stage') == stage and e['event'] == 'submitted'}
+    selected = {joins[rid]['internal_request_id']: offer for rid, offer in offers.items()}
+    accepted = [e for e in core if e['event'] == 'request_accepted' and e['request_id'] in selected]
+    if len(accepted) != len(selected) or {e['request_id'] for e in accepted} != set(selected):
+        raise ValueError('Native acceptance population mismatch')
+    clocks = [next(e['clock_identity'] for e in client if e.get('stage') == stage and e['event']=='submitted')]
+    from load_analysis import common_clock
+    for rank in (0, 1):
+        init = next(e for e in core if e['event']=='core_initialized' and e['dp_rank']==rank)
+        clocks.append(init['clock_identity'])
+        # Read-only worker snapshot may be in Core or in its direct child process.
+        if loaded[rank]['pid'] != init['pid']:
+            expected_parent = loaded[rank].get('observed_parent_pid')
+            if expected_parent != init['pid']:
+                raise ValueError('Reference worker/Core parent identity mismatch')
+    common_clock(clocks)
+    for e in accepted:
+        offer = selected[e['request_id']]
+        if e['dp_rank'] != offer['owner'] or e['prompt_token_ids'] != inputs[offer['family']]:
+            raise ValueError('Actual native owner/prompt mismatch')
+    return dict(status='PASS_NATIVE_OWNERS', requests=len(accepted),
+                source='Native add_request in rank-local EngineCore; explicit external/internal request join')
 
 
 def client_assessment(stage, plan, client, joins, inputs, max_output):
@@ -136,7 +151,7 @@ def client_assessment(stage, plan, client, joins, inputs, max_output):
         offer_lateness_ms=dict(median=statistics.median(m['offer_lateness_ns'] for m in metrics) / 1e6,
                                maximum=max(m['offer_lateness_ns'] for m in metrics) / 1e6),
         drain_seconds=max(0, max(e['monotonic_ns'] for e in terminals) - end) / 1e9,
-        native_owner_verification='UNKNOWN in reference; separate native audit required for observed cells')
+        native_owner_verification='Separate rank-native acceptance audit required in every cell')
 
 
 def comparison(cells, config):
@@ -168,7 +183,7 @@ def comparison(cells, config):
         b.pop('active_requests')
         if a != b or c['native_sources'] != first['native_sources']:
             raise ValueError('Effective scheduler or native source drift')
-        if c['condition']['observer'] == 'observed' and c['native_owner_audit'] != 'PASS':
+        if c['native_owner_audit'] != 'PASS':
             raise ValueError('Missing observed native ownership audit')
     contrasts = []
     for axis, pairs in [('active_limit', [('seq4_observed', 'seq8_observed'), ('seq4_reference', 'seq8_reference')]),
@@ -187,5 +202,5 @@ def comparison(cells, config):
                 output_token_changes=[rid for rid in am if am[rid]['output_digest'] != bm[rid]['output_digest']]))
     return dict(status='PASS_MATCHED_COLLECTION', contrasts=contrasts,
         kv_capacity_by_cell={c['name']: c['kv_capacity_blocks'] for c in cells},
-        interpretation='One exploratory 2x2 block; no significance/materiality threshold invented. Inspect observer contrasts before interpreting the active-limit effect. Native owner/KV/work unobserved in references.',
+        interpretation='One exploratory 2x2 block; no significance/materiality threshold invented. Inspect observer contrasts before interpreting the active-limit effect. References retain native owner acceptance plus frontend logging; KV/work unobserved.',
         limits='Time drift, automatic KV profiling, batch-specific JIT, output variation and observer-by-batch interactions remain possible; no hardware maximum, pure decode, BLIS or D2 claim.')

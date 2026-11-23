@@ -53,6 +53,7 @@ def run_trials(out, prep, execute=runtime.run):
             native = retained_result(trial, receipt)
             write(trial / 'status.json', native)
             if (native['status'] != 'PASS_FIXED_REPLAY' or native.get('error')
+                    or native.get('native_owner_audit') != 'PASS_NATIVE_OWNERS'
                     or native.get('owned_processes_remaining') or native.get('cleanup_unknown_processes')
                     or not native.get('shutdown_returned')):
                 raise RuntimeError('STOP_' + condition['name'] + ': inspect retained status/logs; no later cell')
@@ -64,7 +65,7 @@ def run_trials(out, prep, execute=runtime.run):
                 client=native['client_summary'], engine_args=cfg['engine_args'], effective_scheduler=cfg['effective_scheduler'],
                 gpu_ids=[w['gpu_uuid'] for w in loaded], kv_capacity_blocks=[w['kv_capacity_blocks'] for w in loaded],
                 native_sources=json.loads((trial / 'native-sources.json').read_text()),
-                native_owner_audit='PASS' if native.get('native_owner_audit') == 'PASS_ACCOUNTING' else 'UNKNOWN_REFERENCE',
+                native_owner_audit='PASS' if native.get('native_owner_audit') == 'PASS_NATIVE_OWNERS' else 'UNVERIFIED',
                 raw_path=condition['name']))
             write(out / 'status.json', result)
         if hashes() != initial:

@@ -63,10 +63,12 @@ async def scheduled_offers(plan,launch,pending_count,emit,max_pending,deadline,f
 async def run(out,model,gpu_ids,condition=None):
     instrumented=condition is None or condition['observer']=='observed'
     if condition is not None:
-        from load_sensitivity import frozen_trace, rebase, configure, client_assessment, process_members
+        from load_sensitivity import frozen_trace, rebase, configure, client_assessment, verify_owners
         sensitivity,fixed_trace=frozen_trace()
         if condition not in sensitivity['order']:raise ValueError('Unreviewed sensitivity condition')
-    os.environ.update(MOE_OBSERVATION_ROOT=str(out),MOE_LOAD_MODE='1' if instrumented else '0',
+    # Both modes need Writer clock provenance. Hook installation is controlled by
+    # scheduler/worker class selection and instrumented, never by this flag alone.
+    os.environ.update(MOE_OBSERVATION_ROOT=str(out),MOE_LOAD_MODE='1',
         VLLM_WORKER_MULTIPROC_METHOD='spawn',VLLM_ALLOW_INSECURE_SERIALIZATION='0',NCCL_DEBUG='INFO')
     protocol=json.loads((ROOT/'load_protocol.json').read_text())
     result=dict(status='BLOCKED',stages=[],claims='One finite-horizon mixed prefill/decode EP2 observation; no SLO/BLIS/D2 claim',
@@ -119,10 +121,12 @@ async def run(out,model,gpu_ids,condition=None):
         await engine.check_health()
         await engine.collective_rpc('research_rank_state',timeout=30,args=(str(out),'loaded'))
         loaded=[json.loads((out/f'loaded-dp{r}.json').read_text()) for r in (0,1)];validate_residency(loaded,gpu_ids)
-        core_initial=[e for rank in (0,1) for e in read_lines(out/f'core-dp{rank}.jsonl') if e['event']=='core_initialized'] if instrumented else []
+        core_initial=[e for rank in (0,1) for e in read_lines(out/f'core-dp{rank}.jsonl') if e['event']=='core_initialized']
         worker_processes=owned_process_receipts([w['pid'] for w in loaded])
         if any(not p.get('present') or p.get('parent_pid') in (None,0,1) for p in worker_processes.values()):raise ValueError('Worker parent provenance unavailable')
-        members=([e['pid'] for e in core_initial]+[w['pid'] for w in loaded]) if instrumented else process_members(worker_processes,os.getpid())
+        members=[e['pid'] for e in core_initial]+[w['pid'] for w in loaded]
+        for w in loaded:w['observed_parent_pid']=worker_processes[str(w['pid'])]['parent_pid']
+        if condition is not None:write(out/'rank-core-parent-join.json',loaded)
         owned_before=owned_process_receipts(members)
         write(out/'owned-processes-before.json',owned_before)
         if instrumented:await engine.collective_rpc('load_install',timeout=30,args=(str(out),))
@@ -216,11 +220,11 @@ async def run(out,model,gpu_ids,condition=None):
             if instrumented:await engine.collective_rpc('load_end',timeout=60,args=(name,))
             active_episode=None
             client=read_lines(out/'client-dp-1.jsonl')
-            core=[e for rank in (0,1) for e in read_lines(out/f'core-dp{rank}.jsonl')] if instrumented else []
+            core=[e for rank in (0,1) for e in read_lines(out/f'core-dp{rank}.jsonl')]
             workers={rank:json.loads((out/f'{name}-load-worker-dp{rank}.json').read_text()) for rank in (0,1)} if instrumented else {}
             if any(workers[r]['worker_pid']!=loaded[r]['pid'] for r in workers):raise ValueError('Worker incarnation changed')
             if instrumented:assessment=validate_stage(name,core,workers,client,joins,protocol['inputs'],protocol['max_output_tokens'],require_multi)
-            else:assessment=dict(status='PASS_CLIENT_ONLY',groups=[],native_ownership='UNKNOWN',KV_ownership='UNKNOWN',MoE_work='UNKNOWN')
+            else:assessment=dict(status='PASS_CLIENT_ONLY',groups=[],native_ownership='See separate native acceptance audit',KV_ownership='UNKNOWN',MoE_work='UNKNOWN')
             if condition is not None and instrumented:
                 for event in core:
                     if event['event']=='schedule' and 'load_after' in event:
@@ -260,7 +264,9 @@ async def run(out,model,gpu_ids,condition=None):
                 service_scope='Finite-horizon observed cohort rate, not an SLO knee or hardware maximum')
             if condition is not None:
                 receipt['client_summary']=client_assessment(name,dict(arrivals=plan,windows=windows),client,joins,protocol['inputs'],protocol['max_output_tokens'])
-                if not instrumented:receipt['unobserved']=['actual native owner','native acceptance','scheduler/KV/grants','MoE work and physical intervals']
+                receipt['native_owner_audit']=verify_owners(name,core,client,joins,protocol['inputs'],loaded)
+                write(out/(name+'-native-owners.json'),receipt['native_owner_audit'])
+                if not instrumented:receipt['unobserved']=['scheduler/KV/grants','MoE work and physical intervals']
             result['stages'].append(receipt);write(out/'load-result.json',result)
             print('Completed '+name+': '+str(len(terminal))+' normal completions',flush=True)
             if stop is not None or task_error:raise RuntimeError('SAFE_STOP_'+str(stop or 'REQUEST_ERROR'))
@@ -287,7 +293,7 @@ async def run(out,model,gpu_ids,condition=None):
             telemetry(out,'before-trajectory')
             trajectory_receipt=await stage('trajectory',replay,protocol['observer'])
             result['client_summary']=trajectory_receipt['client_summary']
-            result['native_owner_audit']=trajectory_receipt['status'] if instrumented else 'UNKNOWN_REFERENCE'
+            result['native_owner_audit']=trajectory_receipt['native_owner_audit']['status']
             result['status']='PASS_FIXED_REPLAY'
             if trajectory_receipt['arrival_phase_mismatches']:result['status']='PARTIAL_ARRIVAL_PHASE_DRIFT'
             if instrumented and any(p['paired_diagnostic_batches']==0 for p in trajectory_receipt['phase_reports']):

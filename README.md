@@ -1,6 +1,6 @@
 # OLMoE Kaggle ortam tanılaması
 
-## Aktif istek sınırı: 4 → 8 (`load-sensitivity-v0.10.0`)
+## Aktif istek sınırı: 4 → 8 (`load-sensitivity-v0.10.1`)
 
 Bu sürüm yalnız **aynı geliş izi altında aktif istek sınırı duyarlılığını** ölçer.
 Önceki `433c7316829118cac726bf7998e64a89ba08d2b7` koşusunun 85 istek / 100 saniyelik
@@ -16,9 +16,10 @@ GPU UUID'leri blok boyunca aynı olmalıdır. Önceki tarihsel 4 koşusu eşleş
 
 * **observed:** mevcut native owner/grant/InputBatch/KV ve sınırlı MoE routing/padding/timing
   hook'ları korunur; warmup mapping/muhasebe geçmeden ana iz başlamaz.
-* **reference:** native scheduler + yalnız read-only residency extension; scheduler ve worker
-  gözlem hook'ları kurulmaz. Aynı frontend ID/chunk/terminal ledger kalır. Native acceptance,
-  gerçek request owner, KV ve expert/communication işi bu koşullarda **UNKNOWN**'dır.
+* **reference:** native scheduling metodları yalnız rank-local request-acceptance kaydıyla sarılır;
+  KV/grant ve worker/MoE hook'ları kurulmaz. Aynı frontend ID/chunk/terminal ledger kalır.
+  Native acceptance ve gerçek owner bütün koşullarda doğrulanır; KV/grant ve expert işi
+  referansta **UNKNOWN** kalır. Bu, sıfır ölçüm maliyetli bir koşul değildir.
 * Her limit yalnız aynı observer koşulundaki diğer limitle karşılaştırılır. İki limitin de
   observed/reference farkları ayrıca raporlanır; tek hücrelik sonuçtan ölçümün etkisizliği,
   istatistiksel üstünlük veya bir sayısal “önemsiz overhead” eşiği ilan edilmez.

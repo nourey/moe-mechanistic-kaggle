@@ -6,6 +6,31 @@ from vllm.v1.core.sched.async_scheduler import AsyncScheduler
 from observation_contract import Writer, kv_rows, request_row
 
 
+class OwnershipOnlyMixin:
+    """Minimal reference: native scheduling with only authoritative acceptance I/O."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.owner_obs = Writer(os.environ['MOE_OBSERVATION_ROOT'], 'core', self.parallel_config.data_parallel_rank)
+        self.owner_obs.emit('core_initialized', scheduler=type(self).__name__,
+            scope='Acceptance-only reference; KV/grants/batch/work unobserved')
+
+    def add_request(self, request):
+        result = super().add_request(request)
+        returned = time.monotonic_ns()
+        self.owner_obs.emit('request_accepted', request_id=request.request_id,
+            prompt_token_ids=list(request.prompt_token_ids), native_accept_return_ns=returned,
+            scope='Native add_request returned in this rank EngineCore; not a scheduling grant')
+        return result
+
+
+class OwnershipOnlyScheduler(OwnershipOnlyMixin, Scheduler):
+    pass
+
+
+class OwnershipOnlyAsyncScheduler(OwnershipOnlyMixin, AsyncScheduler):
+    pass
+
+
 class ObservationMixin:
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

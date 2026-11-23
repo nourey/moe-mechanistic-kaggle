@@ -1,13 +1,19 @@
 """Offline negative controls; synthetic fixtures never establish GPU behavior."""
 import copy
+import asyncio
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
+import runpy
+import types
 from unittest.mock import patch
 
 import load_sensitivity as s
 import load_sensitivity_run as runner
+import load_experiment
+import observation_contract
 
 
 def fixture():
@@ -35,7 +41,7 @@ def cells():
                  effective_scheduler=dict(max_num_seqs=c['max_num_seqs'], active_requests=c['max_num_seqs'], max_num_batched_tokens=512, async_scheduling=True, max_concurrent_batches=2),
                  gpu_ids=['SYNTHETIC-0', 'SYNTHETIC-1'], kv_capacity_blocks=[2237,2237],
                  native_sources={'SYNTHETIC_native_source':'SYNTHETIC_hash'},
-                 native_owner_audit='PASS' if c['observer']=='observed' else 'UNKNOWN_REFERENCE') for c in config['order']]
+                 native_owner_audit='PASS') for c in config['order']]
 
 
 class FrozenTraceTests(unittest.TestCase):
@@ -69,7 +75,7 @@ class FrozenTraceTests(unittest.TestCase):
             self.assertEqual({k for k in a if a[k]!=b[k]}, {'max_num_seqs'})
             self.assertEqual(a['max_num_batched_tokens'],512)
             if mode=='reference':
-                self.assertNotIn('scheduler_cls',a)
+                self.assertEqual(a['scheduler_cls'],'observation_scheduler.OwnershipOnlyAsyncScheduler')
                 self.assertEqual(a['worker_extension_cls'],'model_observer.ReadOnlyRankState')
         self.assertEqual(original,saved)
         for limit in (0,16,True):
@@ -82,7 +88,7 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(v['normal_completions'],85)
         self.assertEqual(v['offer_lateness_ms']['maximum'],1)
         self.assertFalse(v['phase_drift'])
-        self.assertIn('UNKNOWN',v['native_owner_verification'])
+        self.assertIn('Separate',v['native_owner_verification'])
 
     def test_terminal_duplicate_missing_or_censored_cannot_pass(self):
         for mutation in ('missing','duplicate','censored'):
@@ -145,12 +151,20 @@ class ComparisonTests(unittest.TestCase):
 
 
 class LauncherTests(unittest.TestCase):
-    def test_reference_cleanup_excludes_frontend_with_in_core_workers(self):
-        self.assertEqual(s.process_members({'20':dict(present=True,parent_pid=10),
-                                           '21':dict(present=True,parent_pid=10)},10),[20,21])
-        self.assertEqual(s.process_members({'30':dict(present=True,parent_pid=20),
-                                           '31':dict(present=True,parent_pid=21)},10),[20,21,30,31])
-        with self.assertRaises(ValueError):s.process_members({'20':dict(present=False)},10)
+    def test_reference_actual_startup_keeps_clock_metadata_without_gpu_import(self):
+        captured=[]
+        real_writer=observation_contract.Writer
+        clock=dict(verified=True,boot_id='SYNTHETIC',time_namespace='SYNTHETIC',implementation='CLOCK_MONOTONIC')
+        def spy(*a,**kw):
+            writer=real_writer(*a,**kw);captured.append(writer.load_clock);return writer
+        with tempfile.TemporaryDirectory() as d, patch.dict(os.environ), \
+                patch.object(observation_contract,'clock_receipt',return_value=clock), \
+                patch.object(load_experiment,'Writer',side_effect=spy), \
+                patch.object(load_experiment,'clock_receipt',return_value=dict(verified=False)):
+            # Explicit early clock refusal stops before native imports; exercise real startup env.
+            result=asyncio.run(load_experiment.run(Path(d),'SYNTHETIC',[],s.frozen_trace()[0]['order'][1]))
+        self.assertEqual(result['status'],'BLOCKED')
+        self.assertEqual(captured,[clock])
 
     def invoke(self,fail=False):
         values=cells();config=s.frozen_trace()[0];calls=[]
@@ -160,7 +174,7 @@ class LauncherTests(unittest.TestCase):
             trial=Path(argv[argv.index('--output')+1]);cell=next(c for c in values if c['name']==label)
             native=dict(status='BLOCKED' if fail else 'PASS_FIXED_REPLAY',shutdown_returned=True,
                 owned_processes_remaining=[],cleanup_unknown_processes=[],client_summary=cell['client'],
-                native_owner_audit='PASS_ACCOUNTING' if cell['condition']['observer']=='observed' else 'UNKNOWN_REFERENCE')
+                native_owner_audit='PASS_NATIVE_OWNERS')
             (trial/'load-result.json').write_text(json.dumps(native))
             (trial/'configuration.json').write_text(json.dumps(dict(source=runner.hashes(),engine_args=cell['engine_args'],effective_scheduler=cell['effective_scheduler'])))
             (trial/'native-sources.json').write_text(json.dumps(cell['native_sources']))
@@ -182,6 +196,39 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(result['status'],'BLOCKED')
         self.assertIn('STOP_seq4_observed',result['error'])
         self.assertEqual(len(calls),2)
+
+
+class ReducedObserverTests(unittest.TestCase):
+    def test_reference_calls_native_once_without_kv_or_worker_dependencies(self):
+        class Native:
+            def __init__(self):self.parallel_config=types.SimpleNamespace(data_parallel_rank=0);self.calls=[]
+            def add_request(self,request):self.calls.append(request);return request
+        scheduler=types.ModuleType('vllm.v1.core.sched.scheduler');scheduler.Scheduler=Native
+        asynchronous=types.ModuleType('vllm.v1.core.sched.async_scheduler');asynchronous.AsyncScheduler=Native
+        with patch.dict('sys.modules',{scheduler.__name__:scheduler,asynchronous.__name__:asynchronous}):
+            module=runpy.run_path(str(s.ROOT/'observation_scheduler.py'))
+        for kind in ('OwnershipOnlyScheduler','OwnershipOnlyAsyncScheduler'):
+            with tempfile.TemporaryDirectory() as d, patch.dict(os.environ,MOE_OBSERVATION_ROOT=d,MOE_LOAD_MODE='1'):
+                obj=module[kind]();req=types.SimpleNamespace(request_id='SYNTHETIC',prompt_token_ids=[1,2])
+                self.assertIs(obj.add_request(req),req);self.assertEqual(obj.calls,[req])
+                obj.owner_obs.stream.close()
+                events=[json.loads(line) for line in (Path(d)/'core-dp0.jsonl').read_text().splitlines()]
+                self.assertEqual([e['event'] for e in events],['core_initialized','request_accepted'])
+                self.assertIn('clock_identity',events[0]);self.assertIn('native_accept_return_ns',events[1])
+                self.assertFalse(hasattr(obj,'obs'))
+
+    def test_native_owner_joins_and_wrong_rank_clock_parent_controls(self):
+        from test_load import fixture as native_fixture
+        core,workers,client,joins,inputs=native_fixture()
+        loaded=[dict(pid=20+r,observed_parent_pid=10+r) for r in (0,1)]
+        self.assertEqual(s.verify_owners('check',core,client,joins,inputs,loaded)['status'],'PASS_NATIVE_OWNERS')
+        for problem in ('rank','missing','parent','clock'):
+            cc=copy.deepcopy(core);ll=copy.deepcopy(loaded)
+            if problem=='rank':next(e for e in cc if e['event']=='request_accepted')['dp_rank']=1
+            if problem=='missing':cc=[e for e in cc if e['event']!='request_accepted']
+            if problem=='parent':ll[0]['observed_parent_pid']=999
+            if problem=='clock':cc[0]['clock_identity']['boot_id']='DIFFERENT'
+            with self.assertRaises(ValueError):s.verify_owners('check',cc,client,joins,inputs,ll)
 
 
 if __name__=='__main__':unittest.main()

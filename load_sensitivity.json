@@ -1,5 +1,5 @@
 {
-  "protocol": "olmoe-active-limit-v0.10",
+  "protocol": "olmoe-active-limit-v0.10.1",
   "baseline_commit": "433c7316829118cac726bf7998e64a89ba08d2b7",
   "original_archive": "moe-load-20261123T170150Z-e65b60bf.zip",
   "original_archive_sha256": "2c88c18c1819493a8f2e309028a25f1546dbbb500c08b3a2cf1573a3855fb40f",
@@ -31,6 +31,6 @@
   "child_timeout_seconds": 600,
   "total_child_timeout_seconds": 2400,
   "scope": "One 2x2 sensitivity block, no statistical superiority or hardware-capacity claim. Fresh engine per cell. Same GPUs within block; historical trial is not the matched 4 baseline.",
-  "reference_scope": "Native scheduler, no worker observation hooks; same frontend identity/chunk/terminal ledger. Native ownership, KV ledger and internal work UNKNOWN in reference mode.",
+  "reference_scope": "Native scheduling methods with only rank-local request-acceptance logging; same frontend identity/chunk/terminal ledger. Actual owners verified in every cell. KV/grants/worker/MoE hooks disabled in references. Residual minimal logging overhead is not zero.",
   "ordering_scope": "Fixed ABBA active-limit order; observer order reversed between limits. One cell each; hardware drift, JIT and stochastic variability remain unquantified."
 }
