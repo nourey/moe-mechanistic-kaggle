@@ -1,0 +1,713 @@
+{
+  "arrivals": [
+    {
+      "request_id": "trajectory-0000",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 753846226435,
+      "phase": "low_initial"
+    },
+    {
+      "request_id": "trajectory-0001",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 756603940042,
+      "phase": "low_initial"
+    },
+    {
+      "request_id": "trajectory-0002",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 759361653649,
+      "phase": "low_initial"
+    },
+    {
+      "request_id": "trajectory-0003",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 762119367255,
+      "phase": "low_initial"
+    },
+    {
+      "request_id": "trajectory-0004",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 764877080863,
+      "phase": "low_initial"
+    },
+    {
+      "request_id": "trajectory-0005",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 767634794470,
+      "phase": "low_initial"
+    },
+    {
+      "request_id": "trajectory-0006",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 770392508077,
+      "phase": "low_initial"
+    },
+    {
+      "request_id": "trajectory-0007",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 773150221683,
+      "phase": "low_initial"
+    },
+    {
+      "request_id": "trajectory-0008",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 775907935291,
+      "phase": "low_initial"
+    },
+    {
+      "request_id": "trajectory-0009",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 778665648898,
+      "phase": "low_initial"
+    },
+    {
+      "request_id": "trajectory-0010",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 778846226435,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0011",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 779765464303,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0012",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 780684702173,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0013",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 781603940042,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0014",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 782523177911,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0015",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 783442415779,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0016",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 784361653648,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0017",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 785280891518,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0018",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 786200129387,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0019",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 787119367255,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0020",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 788038605125,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0021",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 788957842994,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0022",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 789877080863,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0023",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 790796318731,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0024",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 791715556600,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0025",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 792634794470,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0026",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 793554032339,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0027",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 794473270207,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0028",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 795392508077,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0029",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 796311745946,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0030",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 797230983815,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0031",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 798150221683,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0032",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 799069459552,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0033",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 799988697422,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0034",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 800907935291,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0035",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 801827173159,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0036",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 802746411029,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0037",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 803665648898,
+      "phase": "medium"
+    },
+    {
+      "request_id": "trajectory-0038",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 803846226435,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0039",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 804535654836,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0040",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 805225083238,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0041",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 805914511640,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0042",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 806603940042,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0043",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 807293368443,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0044",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 807982796845,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0045",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 808672225247,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0046",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 809361653649,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0047",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 810051082050,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0048",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 810740510452,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0049",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 811429938854,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0050",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 812119367255,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0051",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 812808795657,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0052",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 813498224059,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0053",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 814187652461,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0054",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 814877080863,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0055",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 815566509264,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0056",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 816255937666,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0057",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 816945366068,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0058",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 817634794470,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0059",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 818324222871,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0060",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 819013651273,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0061",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 819703079675,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0062",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 820392508077,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0063",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 821081936478,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0064",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 821771364880,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0065",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 822460793282,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0066",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 823150221683,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0067",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 823839650085,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0068",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 824529078487,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0069",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 825218506889,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0070",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 825907935291,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0071",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 826597363692,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0072",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 827286792094,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0073",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 827976220496,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0074",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 828665648898,
+      "phase": "high"
+    },
+    {
+      "request_id": "trajectory-0075",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 828846226435,
+      "phase": "low_recovery"
+    },
+    {
+      "request_id": "trajectory-0076",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 831603940042,
+      "phase": "low_recovery"
+    },
+    {
+      "request_id": "trajectory-0077",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 834361653649,
+      "phase": "low_recovery"
+    },
+    {
+      "request_id": "trajectory-0078",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 837119367255,
+      "phase": "low_recovery"
+    },
+    {
+      "request_id": "trajectory-0079",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 839877080863,
+      "phase": "low_recovery"
+    },
+    {
+      "request_id": "trajectory-0080",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 842634794470,
+      "phase": "low_recovery"
+    },
+    {
+      "request_id": "trajectory-0081",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 845392508077,
+      "phase": "low_recovery"
+    },
+    {
+      "request_id": "trajectory-0082",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 848150221683,
+      "phase": "low_recovery"
+    },
+    {
+      "request_id": "trajectory-0083",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 1,
+      "due_ns": 850907935291,
+      "phase": "low_recovery"
+    },
+    {
+      "request_id": "trajectory-0084",
+      "stage": "trajectory",
+      "family": "narrative",
+      "owner": 0,
+      "due_ns": 853665648898,
+      "phase": "low_recovery"
+    }
+  ],
+  "windows": [
+    {
+      "name": "low_initial",
+      "start_ns": 753846226435,
+      "end_ns": 778846226435
+    },
+    {
+      "name": "medium",
+      "start_ns": 778846226435,
+      "end_ns": 803846226435
+    },
+    {
+      "name": "high",
+      "start_ns": 803846226435,
+      "end_ns": 828846226435
+    },
+    {
+      "name": "low_recovery",
+      "start_ns": 828846226435,
+      "end_ns": 853846226435
+    }
+  ],
+  "options": {
+    "diagnostic": true,
+    "sample_every": 17,
+    "max_samples": 32,
+    "max_frames": 4096,
+    "max_trace_bytes": 67108864
+  }
+}

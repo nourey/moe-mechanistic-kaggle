@@ -1,5 +1,63 @@
 # OLMoE Kaggle ortam tanılaması
 
+## Aktif istek sınırı: 4 → 8 (`load-sensitivity-v0.10.0`)
+
+Bu sürüm yalnız **aynı geliş izi altında aktif istek sınırı duyarlılığını** ölçer.
+Önceki `433c7316829118cac726bf7998e64a89ba08d2b7` koşusunun 85 istek / 100 saniyelik
+`trajectory-plan.json` dosyası byte-byte `load_replay_trace.json` olarak korunur
+(SHA-256 `d75a52630bed241e27712235b41dcf9dfbbfc9b76634e95305a0f322fccc2694`).
+Mutlak monotonic zamanlar tek bir integer farkla ötelenir; aralık, içerik, owner ve faz değişmez.
+Yeni kapasite araması, yeni RPS seçimi veya otomatik içerik karşılaştırması yoktur.
+
+Dört yeni engine: **4/observed → 8/reference → 8/observed → 4/reference**.
+Her biri aynı 16 narrative isteklik primer/ısınma, ardından aynı 85 istek izini çalıştırır.
+Isınma kapasite tahmini veya eski qualification'ın tekrarı değildir; timed ana izle ayrı tutulur.
+GPU UUID'leri blok boyunca aynı olmalıdır. Önceki tarihsel 4 koşusu eşleştirilmiş kontrol sayılmaz.
+
+* **observed:** mevcut native owner/grant/InputBatch/KV ve sınırlı MoE routing/padding/timing
+  hook'ları korunur; warmup mapping/muhasebe geçmeden ana iz başlamaz.
+* **reference:** native scheduler + yalnız read-only residency extension; scheduler ve worker
+  gözlem hook'ları kurulmaz. Aynı frontend ID/chunk/terminal ledger kalır. Native acceptance,
+  gerçek request owner, KV ve expert/communication işi bu koşullarda **UNKNOWN**'dır.
+* Her limit yalnız aynı observer koşulundaki diğer limitle karşılaştırılır. İki limitin de
+  observed/reference farkları ayrıca raporlanır; tek hücrelik sonuçtan ölçümün etkisizliği,
+  istatistiksel üstünlük veya bir sayısal “önemsiz overhead” eşiği ilan edilmez.
+
+`max_num_batched_tokens=512`, context=512, max output=8, EOS, seed, runtime/model/tokenizer,
+FP16/TP1/PP1/DP2/EP2, Triton/AGRS, APC/DBO/EPLB/eager/async ayarları korunur.
+İzin verilen fark `max_num_seqs=4/8` ve açık observer adapter seçimidir. Çözümlenmiş scheduler,
+executor, GPU kimlikleri ve native kaynaklar karşılaştırılır. Native bellek profillemesinin
+KV kapasitesini farklı seçmesi ayrıca görünür bırakılır; bunun veya değişen terminal token'ların
+olası karıştırıcı etkisi gizlenmez. MoE örnekleme politikası aynıdır, örneklenen batch'ler aynı olmayabilir.
+
+**Kaggle T4 ×2 / Internet On:** yeni hücreden yalnız `load_sensitivity_run.py` çalıştırılır.
+Exact commit ile doğrulanan clone komutu inceleme tesliminde verilir; Run All yapma.
+Eski oturum kapandıysa aynı kilitli runtime/model geri yüklenir, alternatif stack denenmez.
+Kod GPU deneyi otomatik olarak yerelde başlatmaz.
+
+Sınırlar: her engine için 101 offer (16 primer + 85 ana), 32 pending, en fazla 8 çıktı token'ı;
+360 saniye work/drain, 60 saniye follow-up, 600 saniye native process watchdog.
+Toplam native blok watchdog'u 2400 saniye, kurulum/geri yükleme ayrı sınırlı hazırlama protokolüdür.
+Eksik/censored istek, gerçek owner/KV/worker mapping hatası, kaynak/kimlik drift'i, phase drift,
+başarısız shutdown veya kalan/belirsiz owned process halinde blok durur; sonraki hücre çalışmaz.
+Hiçbir başka kullanıcının process'i temizlenmez; yalnız başlatılan process grubunun watchdog'u vardır.
+
+Dönüş: `moe-load-sensitivity-<UTC>-<id>.zip` ve `.zip.sha256`.
+ZIP dört trial'ın tam loglarını, planlarını, native request/KV/worker kayıtlarını (observed),
+frontend ledger'ını (her mod), kaynakları, runtime hazırlama kanıtını ve `status.json` karşılaştırmasını içerir.
+Ana sonuçlar faz/backlog, grant/guard, batch/prefill/decode, KV, gecikme, drain ve observer kontrastlarıdır.
+İyileşme, değişmeme veya kötüleşme geçerli sonuçtur; `PASS_MATCHED_COLLECTION` yalnız toplama
+bütünlüğüdür. Bir aşama kısmi kalırsa ZIP yine saklanır ve performans PASS verilmez.
+
+Yalnız bir 2×2 blok: ısınma/JIT, sıcaklık/saat drift'i, otomatik cache profili ve observer-batch
+etkileşimi tamamen ayrıştırılmaz. Kernel/collective süreleri saf compute/network maliyeti değildir.
+Pinned vLLM'de `max_num_seqs` runner buffer kapasitesini de boyutlandırır; bu deney saf bir
+admission-only müdahale değildir. `max_num_active_seqs` ayrıca kaydedilir; None varsayılanı
+bu deneyde 4/8 admission sınırına çözülür. Native limit farklı çözülürse ana karşılaştırma durur.
+Bu karma prefill/decode deneyidir; GPU idle, fiziksel azami kapasite, D2 faydası, BLIS kalibrasyonu,
+Qwen/DeepEP ya da G0/M1-002 tamamlanması iddia edilmez. Önceki ~300 ms içerik farkı açık kalır.
+
+
 ## Experiment 2 — Routing dağılımı ve fiziksel yürütme (`routing-v0.8.0`)
 
 **İlk A–B–B–A sonucu korunur; bu yeni bir sorudur.** Aynı owner/request/token/context/grant şekillerinde farklı gerçekleşmiş routing dağılımları, expert/dispatch/combine aralıklarıyla ilişkili mi? Fark görülmemesi de sonuçtur. Prompt içeriğinin farklı olması tek başına routing'in latency farkına neden olduğunu göstermez. Gelecekteki routing tahmini veya BLIS kalibrasyonu yapılmaz.

@@ -21,6 +21,7 @@ CODE=['load_run.py','load_experiment.py','load_analysis.py','load_protocol.json'
       'model-qualification.json','model-pin.json','runtime-lock.txt','observation.json','routing_inputs.json',
       'routing_experiment.py','routing_analysis.py','model_qualify.py','prepare_runtime.py','diagnose.py',
       'model_observer.py','native_model.py']
+CODE += ['load_sensitivity.py','load_sensitivity_run.py','load_sensitivity.json','load_replay_trace.json']
 
 def write(path,value):path.write_text(json.dumps(value,ensure_ascii=False,indent=2)+'\n')
 def hashes():return {n:hashlib.sha256((ROOT/n).read_bytes()).hexdigest() for n in CODE}
@@ -32,7 +33,7 @@ def owned_process_receipts(pids):
     for pid in sorted(set(pids)):
         try:
             raw=Path(f'/proc/{pid}/stat').read_text();fields=raw[raw.rfind(')')+2:].split()
-            result[str(pid)]=dict(present=True,state=fields[0],start_ticks=fields[19])
+            result[str(pid)]=dict(present=True,state=fields[0],parent_pid=int(fields[1]),start_ticks=fields[19])
         except FileNotFoundError:result[str(pid)]=dict(present=False)
         except OSError as error:result[str(pid)]=dict(present=None,error=repr(error))
     return result
@@ -59,8 +60,13 @@ async def scheduled_offers(plan,launch,pending_count,emit,max_pending,deadline,f
     return jobs,stop
 
 
-async def run(out,model,gpu_ids):
-    os.environ.update(MOE_OBSERVATION_ROOT=str(out),MOE_LOAD_MODE='1',
+async def run(out,model,gpu_ids,condition=None):
+    instrumented=condition is None or condition['observer']=='observed'
+    if condition is not None:
+        from load_sensitivity import frozen_trace, rebase, configure, client_assessment, process_members
+        sensitivity,fixed_trace=frozen_trace()
+        if condition not in sensitivity['order']:raise ValueError('Unreviewed sensitivity condition')
+    os.environ.update(MOE_OBSERVATION_ROOT=str(out),MOE_LOAD_MODE='1' if instrumented else '0',
         VLLM_WORKER_MULTIPROC_METHOD='spawn',VLLM_ALLOW_INSECURE_SERIALIZATION='0',NCCL_DEBUG='INFO')
     protocol=json.loads((ROOT/'load_protocol.json').read_text())
     result=dict(status='BLOCKED',stages=[],claims='One finite-horizon mixed prefill/decode EP2 observation; no SLO/BLIS/D2 claim',
@@ -83,27 +89,44 @@ async def run(out,model,gpu_ids):
         write(out/'native-sources.json',native_hashes)
         if native_hashes!=expected:raise ValueError('Pinned native source identity drift')
         kwargs=dict(json.loads((ROOT/'model-qualification.json').read_text())['engine_args']);kwargs['model']=model
+        if condition is not None:kwargs['max_num_seqs']=condition['max_num_seqs']
         baseline=AsyncEngineArgs(**kwargs).create_engine_config()
         kind=baseline.scheduler_config.get_scheduler_cls().__name__
         if kind not in ('Scheduler','AsyncScheduler'):raise ValueError('Unsupported baseline scheduler')
-        kwargs.update(async_scheduling=baseline.scheduler_config.async_scheduling,
-            scheduler_cls='observation_scheduler.Observed'+kind,worker_extension_cls='observation_worker.ObservationWorker')
+        if condition is None:
+            kwargs.update(async_scheduling=baseline.scheduler_config.async_scheduling,
+                scheduler_cls='observation_scheduler.Observed'+kind,worker_extension_cls='observation_worker.ObservationWorker')
+        else:kwargs=configure(kwargs,condition['max_num_seqs'],condition['observer'],kind,baseline.scheduler_config.async_scheduling)
         engine=AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
         if (engine.vllm_config.scheduler_config.async_scheduling!=baseline.scheduler_config.async_scheduling
             or engine.vllm_config.max_concurrent_batches!=baseline.max_concurrent_batches
             or engine.vllm_config.cache_config.enable_prefix_caching):raise ValueError('Baseline serving policy changed')
+        effective_scheduler=dict(max_num_seqs=engine.vllm_config.scheduler_config.max_num_seqs,
+            max_num_active_seqs=engine.vllm_config.scheduler_config.max_num_active_seqs,
+            active_requests=(engine.vllm_config.scheduler_config.max_num_active_seqs
+                if engine.vllm_config.scheduler_config.max_num_active_seqs is not None else engine.vllm_config.scheduler_config.max_num_seqs),
+            max_num_batched_tokens=engine.vllm_config.scheduler_config.max_num_batched_tokens,
+            async_scheduling=engine.vllm_config.scheduler_config.async_scheduling,
+            max_concurrent_batches=engine.vllm_config.max_concurrent_batches,
+            executor_backend=str(engine.vllm_config.parallel_config.distributed_executor_backend))
+        if condition is not None and (effective_scheduler['max_num_seqs']!=condition['max_num_seqs'] or effective_scheduler['active_requests']!=condition['max_num_seqs']):raise ValueError('Active limit not applied')
         initial_hashes=hashes()
         write(out/'configuration.json',dict(engine_args=kwargs,source=initial_hashes,clock_identity=clock,
             max_concurrent_batches=baseline.max_concurrent_batches,profiler=False,
+            sensitivity_condition=condition,
+            effective_scheduler=effective_scheduler,
             timestamp_meaning='Host offer/accept/application instants; CUDA intervals local to device, not global instants'))
         await engine.check_health()
         await engine.collective_rpc('research_rank_state',timeout=30,args=(str(out),'loaded'))
         loaded=[json.loads((out/f'loaded-dp{r}.json').read_text()) for r in (0,1)];validate_residency(loaded,gpu_ids)
-        core_initial=[e for rank in (0,1) for e in read_lines(out/f'core-dp{rank}.jsonl') if e['event']=='core_initialized']
-        owned_before=owned_process_receipts([e['pid'] for e in core_initial]+[w['pid'] for w in loaded])
+        core_initial=[e for rank in (0,1) for e in read_lines(out/f'core-dp{rank}.jsonl') if e['event']=='core_initialized'] if instrumented else []
+        worker_processes=owned_process_receipts([w['pid'] for w in loaded])
+        if any(not p.get('present') or p.get('parent_pid') in (None,0,1) for p in worker_processes.values()):raise ValueError('Worker parent provenance unavailable')
+        members=([e['pid'] for e in core_initial]+[w['pid'] for w in loaded]) if instrumented else process_members(worker_processes,os.getpid())
+        owned_before=owned_process_receipts(members)
         write(out/'owned-processes-before.json',owned_before)
-        await engine.collective_rpc('load_install',timeout=30,args=(str(out),))
-        for rank in (0,1):
+        if instrumented:await engine.collective_rpc('load_install',timeout=30,args=(str(out),))
+        for rank in ((0,1) if instrumented else ()):
             q=json.loads((out/f'timing-qualification-dp{rank}.json').read_text())
             if not q['usable'] or q['worker_pid']!=loaded[rank]['pid'] or q['gpu_uuid']!=loaded[rank]['gpu_uuid']:
                 raise ValueError('Worker/timing sanity not qualified')
@@ -163,7 +186,7 @@ async def run(out,model,gpu_ids):
             task_error=False
             if time.monotonic()+protocol['drain_timeout_seconds']>=deadline:raise RuntimeError('Insufficient remaining work/drain budget')
             await engine.wait_for_requests_to_drain(drain_timeout=30)
-            await engine.collective_rpc('load_begin',timeout=30,args=(name,options))
+            if instrumented:await engine.collective_rpc('load_begin',timeout=30,args=(name,options))
             active_episode=name
             start=time.monotonic()+.05
             plan,windows=build(start)
@@ -190,15 +213,22 @@ async def run(out,model,gpu_ids):
                 raise RuntimeError('FOLLOWUP_EXPIRED; censored records preserved, no further stage')
             await engine.wait_for_requests_to_drain(drain_timeout=max(1,int(min(30,deadline-time.monotonic()))))
             drain_end=time.monotonic_ns()
-            await engine.collective_rpc('load_end',timeout=60,args=(name,))
+            if instrumented:await engine.collective_rpc('load_end',timeout=60,args=(name,))
             active_episode=None
             client=read_lines(out/'client-dp-1.jsonl')
-            core=[e for rank in (0,1) for e in read_lines(out/f'core-dp{rank}.jsonl')]
-            workers={rank:json.loads((out/f'{name}-load-worker-dp{rank}.json').read_text()) for rank in (0,1)}
-            if any(workers[r]['worker_pid']!=loaded[r]['pid'] for r in (0,1)):raise ValueError('Worker incarnation changed')
-            assessment=validate_stage(name,core,workers,client,joins,protocol['inputs'],protocol['max_output_tokens'],require_multi)
+            core=[e for rank in (0,1) for e in read_lines(out/f'core-dp{rank}.jsonl')] if instrumented else []
+            workers={rank:json.loads((out/f'{name}-load-worker-dp{rank}.json').read_text()) for rank in (0,1)} if instrumented else {}
+            if any(workers[r]['worker_pid']!=loaded[r]['pid'] for r in workers):raise ValueError('Worker incarnation changed')
+            if instrumented:assessment=validate_stage(name,core,workers,client,joins,protocol['inputs'],protocol['max_output_tokens'],require_multi)
+            else:assessment=dict(status='PASS_CLIENT_ONLY',groups=[],native_ownership='UNKNOWN',KV_ownership='UNKNOWN',MoE_work='UNKNOWN')
+            if condition is not None and instrumented:
+                for event in core:
+                    if event['event']=='schedule' and 'load_after' in event:
+                        limits=event['load_after']['limits']
+                        if limits['active']!=condition['max_num_seqs'] or limits['slots']!=condition['max_num_seqs']:
+                            raise ValueError('Observed native active/runner limit mismatch')
             write(out/(name+'-assessment.json'),assessment)
-            phases=[dict(name=w['name'],**phase_report(core,client,name,w['start_ns'],w['end_ns'])) for w in windows]
+            phases=[dict(name=w['name'],**phase_report(core,client,name,w['start_ns'],w['end_ns'])) for w in windows] if instrumented else []
             for phase in phases:
                 phase['paired_diagnostic_batches']=sum(g['sampled'] and phase['start_ns']<=g['host_submit_ns'][0]<=phase['end_ns'] for g in assessment['groups'])
                 phase['sample_phase_scope']='Rank-0 host submission phase, not GPU start or a global atomic snapshot'
@@ -222,12 +252,15 @@ async def run(out,model,gpu_ids):
                     scope='Frontend chunk-receipt clocks; no invented per-token timestamp or approved SLO'))
             receipt=dict(name=name,status=assessment['status'],requests=len(terminal),stop=stop,
                 median_residence_seconds=statistics.median(latencies),cohort_completion_rate=len(terminal)/duration,
-                phase_reports=phases,coverage={rank:workers[rank]['coverage'] for rank in (0,1)},
+                phase_reports=phases,coverage={rank:workers[rank]['coverage'] for rank in workers},
                 arrival_phase_mismatches=phase_drift,
                 plan_sha256=hashlib.sha256((out/(name+'-plan.json')).read_bytes()).hexdigest(),
                 request_metrics=request_metrics,
-                drain_report=phase_report(core,client,name,drain_start,drain_end),
+                drain_report=phase_report(core,client,name,drain_start,drain_end) if instrumented else None,
                 service_scope='Finite-horizon observed cohort rate, not an SLO knee or hardware maximum')
+            if condition is not None:
+                receipt['client_summary']=client_assessment(name,dict(arrivals=plan,windows=windows),client,joins,protocol['inputs'],protocol['max_output_tokens'])
+                if not instrumented:receipt['unobserved']=['actual native owner','native acceptance','scheduler/KV/grants','MoE work and physical intervals']
             result['stages'].append(receipt);write(out/'load-result.json',result)
             print('Completed '+name+': '+str(len(terminal))+' normal completions',flush=True)
             if stop is not None or task_error:raise RuntimeError('SAFE_STOP_'+str(stop or 'REQUEST_ERROR'))
@@ -236,60 +269,80 @@ async def run(out,model,gpu_ids):
         def burst(n,name):
             def build(start):
                 rows=make_plan(name,start,1,n)
-                for row in rows:row['due_ns']=int(start*1e9);row['phase']='burst'
+                for row in rows:
+                    row['due_ns']=int(start*1e9);row['phase']='burst'
+                    if condition is not None:row['family']='narrative'
                 return rows,[]
             return build
 
         telemetry(out,'start')
-        mapping=await stage('mapping',burst(4,'mapping'),protocol['mapping_observer'],True)
-        result['mapping_gate']='PASS; actual multi-request rows and sampled decode validated'
-        light={**protocol['observer'],'diagnostic':False}
-        pilots=[]
-        for n in (2,4,8):pilots.append(await stage('burst'+str(n),burst(n,'burst'+str(n)),light))
-        result['overhead_proxy']=dict(mapping_diagnostic_median_s=mapping['median_residence_seconds'],
-            burst4_light_median_s=pilots[1]['median_residence_seconds'],
-            limits='Cold mapping versus later burst: different batch/JIT/cache histories; not a valid quantitative observer-overhead estimate')
-        result['overhead']='UNKNOWN under load; no fully uninstrumented trajectory or replicated overhead comparison run'
-        q0=max(s['cohort_completion_rate'] for s in pilots)
-        residence=max(s['median_residence_seconds'] for s in pilots)
-        horizon=min(protocol['phase_max_seconds'],max(protocol['phase_min_seconds'],protocol['phase_residence_multiplier']*residence))
-        probes=[]
-        for i,multiplier in enumerate(protocol['probe_rate_multipliers']):
-            rate=q0*multiplier;span=min(horizon,protocol['probe_offer_cap']/rate);name='probe'+str(i+1)
-            def build(start,name=name,rate=rate,span=span):
-                rows=make_plan(name,start,span,rate)
-                for row in rows:row['phase']='probe'
-                return rows,[dict(name='probe',start_ns=int(start*1e9),end_ns=int((start+span)*1e9))]
-            probe=await stage(name,build,light);probe['tested_rate']=rate;probes.append(probe)
-            if probe['phase_reports'][0]['observed_service_deficit']:break
-        bounded=bounded_trajectory(probes,horizon,protocol['max_offers']-actual_offers,deadline-time.monotonic(),protocol)
-        frozen=dict(reference_burst_rate=q0,reference_residence_seconds=residence,
-            probe_receipts=probes,**bounded,condition='narrative',
-            source_sha256=initial_hashes,source_scope='Operational excitation derived from retained observations, not calibrated capacity',
-            clock_identity=clock)
-        horizon=bounded['phase_seconds']
-        if hashes()!=initial_hashes:raise ValueError('Source drift before trajectory')
-        write(out/'TRAJECTORY_FREEZE.json',frozen)
-        write(out/'TRAJECTORY_FREEZE_SHA256.json',dict(sha256=hashlib.sha256((out/'TRAJECTORY_FREEZE.json').read_bytes()).hexdigest()))
-        def trajectory(start):
-            rows=[];windows=[]
-            for i,(phase,rate) in enumerate(zip(protocol['phase_names'],frozen['rates'])):
-                phase_start=start+i*horizon
-                part=make_plan('trajectory',phase_start,horizon,rate,family='narrative',offset=len(rows))
-                for row in part:row['phase']=phase
-                rows+=part;windows.append(dict(name=phase,start_ns=int(phase_start*1e9),end_ns=int((phase_start+horizon)*1e9)))
-            return rows,windows
-        telemetry(out,'before-trajectory')
-        trajectory_receipt=await stage('trajectory',trajectory,protocol['observer'])
-        result['observed_pressure']=any(p['observed_service_deficit'] for p in trajectory_receipt['phase_reports'])
-        result['status']='PASS_BOUNDED_TRAJECTORY' if result['observed_pressure'] else 'PARTIAL_NO_OVERLOAD_DEMONSTRATED'
-        if any(p['paired_diagnostic_batches']==0 for p in trajectory_receipt['phase_reports']):
-            result['status']='PARTIAL_DIAGNOSTIC_PHASE_COVERAGE'
-        if trajectory_receipt['arrival_phase_mismatches']:result['status']='PARTIAL_ARRIVAL_PHASE_DRIFT'
-        result['recovery_observations']=dict(high=trajectory_receipt['phase_reports'][2],
-            low_recovery=trajectory_receipt['phase_reports'][3],drain=trajectory_receipt['drain_report'],
-            final_request_KV_accounting='PASS',scope='Multiple retained trajectories; no scalar recovery verdict or D2 equivalence')
-        result['interpretation']='Collection/accounting result; binding physical cause remains a nonexclusive hypothesis'
+        if condition is not None:
+            # Fresh engine and identical fixed primer in every cell, never capacity discovery.
+            result.update(condition=condition,claims='Matched active-limit / observer sensitivity; no D2 or hardware-capacity claim')
+            write(out/'REPLAY_PROVENANCE.json',sensitivity)
+            await stage('warmup',burst(sensitivity['warmup_requests'],'warmup'),protocol['mapping_observer'],instrumented)
+            def replay(start):
+                translated=rebase(fixed_trace,int(start*1e9))
+                return translated['arrivals'],translated['windows']
+            telemetry(out,'before-trajectory')
+            trajectory_receipt=await stage('trajectory',replay,protocol['observer'])
+            result['client_summary']=trajectory_receipt['client_summary']
+            result['native_owner_audit']=trajectory_receipt['status'] if instrumented else 'UNKNOWN_REFERENCE'
+            result['status']='PASS_FIXED_REPLAY'
+            if trajectory_receipt['arrival_phase_mismatches']:result['status']='PARTIAL_ARRIVAL_PHASE_DRIFT'
+            if instrumented and any(p['paired_diagnostic_batches']==0 for p in trajectory_receipt['phase_reports']):
+                result['status']='PARTIAL_DIAGNOSTIC_PHASE_COVERAGE'
+            result['overhead']='Matched reference contrasts collected across four cells; not an unconfounded or replicated overhead estimate'
+        else:
+            mapping=await stage('mapping',burst(4,'mapping'),protocol['mapping_observer'],True)
+            result['mapping_gate']='PASS; actual multi-request rows and sampled decode validated'
+            light={**protocol['observer'],'diagnostic':False}
+            pilots=[]
+            for n in (2,4,8):pilots.append(await stage('burst'+str(n),burst(n,'burst'+str(n)),light))
+            result['overhead_proxy']=dict(mapping_diagnostic_median_s=mapping['median_residence_seconds'],
+                burst4_light_median_s=pilots[1]['median_residence_seconds'],
+                limits='Cold mapping versus later burst: different batch/JIT/cache histories; not a valid quantitative observer-overhead estimate')
+            result['overhead']='UNKNOWN under load; no fully uninstrumented trajectory or replicated overhead comparison run'
+            q0=max(s['cohort_completion_rate'] for s in pilots)
+            residence=max(s['median_residence_seconds'] for s in pilots)
+            horizon=min(protocol['phase_max_seconds'],max(protocol['phase_min_seconds'],protocol['phase_residence_multiplier']*residence))
+            probes=[]
+            for i,multiplier in enumerate(protocol['probe_rate_multipliers']):
+                rate=q0*multiplier;span=min(horizon,protocol['probe_offer_cap']/rate);name='probe'+str(i+1)
+                def build(start,name=name,rate=rate,span=span):
+                    rows=make_plan(name,start,span,rate)
+                    for row in rows:row['phase']='probe'
+                    return rows,[dict(name='probe',start_ns=int(start*1e9),end_ns=int((start+span)*1e9))]
+                probe=await stage(name,build,light);probe['tested_rate']=rate;probes.append(probe)
+                if probe['phase_reports'][0]['observed_service_deficit']:break
+            bounded=bounded_trajectory(probes,horizon,protocol['max_offers']-actual_offers,deadline-time.monotonic(),protocol)
+            frozen=dict(reference_burst_rate=q0,reference_residence_seconds=residence,
+                probe_receipts=probes,**bounded,condition='narrative',
+                source_sha256=initial_hashes,source_scope='Operational excitation derived from retained observations, not calibrated capacity',
+                clock_identity=clock)
+            horizon=bounded['phase_seconds']
+            if hashes()!=initial_hashes:raise ValueError('Source drift before trajectory')
+            write(out/'TRAJECTORY_FREEZE.json',frozen)
+            write(out/'TRAJECTORY_FREEZE_SHA256.json',dict(sha256=hashlib.sha256((out/'TRAJECTORY_FREEZE.json').read_bytes()).hexdigest()))
+            def trajectory(start):
+                rows=[];windows=[]
+                for i,(phase,rate) in enumerate(zip(protocol['phase_names'],frozen['rates'])):
+                    phase_start=start+i*horizon
+                    part=make_plan('trajectory',phase_start,horizon,rate,family='narrative',offset=len(rows))
+                    for row in part:row['phase']=phase
+                    rows+=part;windows.append(dict(name=phase,start_ns=int(phase_start*1e9),end_ns=int((phase_start+horizon)*1e9)))
+                return rows,windows
+            telemetry(out,'before-trajectory')
+            trajectory_receipt=await stage('trajectory',trajectory,protocol['observer'])
+            result['observed_pressure']=any(p['observed_service_deficit'] for p in trajectory_receipt['phase_reports'])
+            result['status']='PASS_BOUNDED_TRAJECTORY' if result['observed_pressure'] else 'PARTIAL_NO_OVERLOAD_DEMONSTRATED'
+            if any(p['paired_diagnostic_batches']==0 for p in trajectory_receipt['phase_reports']):
+                result['status']='PARTIAL_DIAGNOSTIC_PHASE_COVERAGE'
+            if trajectory_receipt['arrival_phase_mismatches']:result['status']='PARTIAL_ARRIVAL_PHASE_DRIFT'
+            result['recovery_observations']=dict(high=trajectory_receipt['phase_reports'][2],
+                low_recovery=trajectory_receipt['phase_reports'][3],drain=trajectory_receipt['drain_report'],
+                final_request_KV_accounting='PASS',scope='Multiple retained trajectories; no scalar recovery verdict or D2 equivalence')
+            result['interpretation']='Collection/accounting result; binding physical cause remains a nonexclusive hypothesis'
         telemetry(out,'end')
         await engine.collective_rpc('research_rank_state',timeout=30,args=(str(out),'after'))
         after=[json.loads((out/f'after-dp{r}.json').read_text()) for r in (0,1)];validate_residency(after,gpu_ids)
@@ -305,8 +358,9 @@ async def run(out,model,gpu_ids):
             except Exception:result['cleanup_abort_error']=traceback.format_exc()
             try:
                 await asyncio.wait_for(engine.wait_for_requests_to_drain(drain_timeout=10),12)
-                await asyncio.wait_for(engine.collective_rpc('load_end',timeout=10,args=(active_episode,)),15)
-                result['failure_worker_trace_exported']=active_episode
+                if instrumented:
+                    await asyncio.wait_for(engine.collective_rpc('load_end',timeout=10,args=(active_episode,)),15)
+                    result['failure_worker_trace_exported']=active_episode
             except Exception:result['failure_worker_export_error']=traceback.format_exc()
         for task in jobs_all:
             if not task.done():task.cancel()
@@ -339,5 +393,10 @@ async def run(out,model,gpu_ids):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',required=True);p.add_argument('--model',required=True);p.add_argument('--gpu-ids',required=True)
-    a=p.parse_args();result=asyncio.run(run(Path(a.output),a.model,json.loads(a.gpu_ids)))
+    p.add_argument('--sensitivity-condition',choices=('seq4_observed','seq8_reference','seq8_observed','seq4_reference'))
+    a=p.parse_args();condition=None
+    if a.sensitivity_condition:
+        from load_sensitivity import frozen_trace
+        config,_=frozen_trace();condition=next(c for c in config['order'] if c['name']==a.sensitivity_condition)
+    result=asyncio.run(run(Path(a.output),a.model,json.loads(a.gpu_ids),condition))
     print(json.dumps({k:v for k,v in result.items() if k!='stages'},indent=2))

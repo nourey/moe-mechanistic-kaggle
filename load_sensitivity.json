@@ -1,0 +1,36 @@
+{
+  "protocol": "olmoe-active-limit-v0.10",
+  "baseline_commit": "433c7316829118cac726bf7998e64a89ba08d2b7",
+  "original_archive": "moe-load-20261123T170150Z-e65b60bf.zip",
+  "original_archive_sha256": "2c88c18c1819493a8f2e309028a25f1546dbbb500c08b3a2cf1573a3855fb40f",
+  "trace_sha256": "d75a52630bed241e27712235b41dcf9dfbbfc9b76634e95305a0f322fccc2694",
+  "load_protocol_sha256": "3ea9f33e0f41b50497c8a1b5700a4537608484c77f2899fc53ee87aaf7027bd2",
+  "order": [
+    {
+      "name": "seq4_observed",
+      "max_num_seqs": 4,
+      "observer": "observed"
+    },
+    {
+      "name": "seq8_reference",
+      "max_num_seqs": 8,
+      "observer": "reference"
+    },
+    {
+      "name": "seq8_observed",
+      "max_num_seqs": 8,
+      "observer": "observed"
+    },
+    {
+      "name": "seq4_reference",
+      "max_num_seqs": 4,
+      "observer": "reference"
+    }
+  ],
+  "warmup_requests": 16,
+  "child_timeout_seconds": 600,
+  "total_child_timeout_seconds": 2400,
+  "scope": "One 2x2 sensitivity block, no statistical superiority or hardware-capacity claim. Fresh engine per cell. Same GPUs within block; historical trial is not the matched 4 baseline.",
+  "reference_scope": "Native scheduler, no worker observation hooks; same frontend identity/chunk/terminal ledger. Native ownership, KV ledger and internal work UNKNOWN in reference mode.",
+  "ordering_scope": "Fixed ABBA active-limit order; observer order reversed between limits. One cell each; hardware drift, JIT and stochastic variability remain unquantified."
+}
