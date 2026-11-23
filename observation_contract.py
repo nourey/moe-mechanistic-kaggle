@@ -18,6 +18,7 @@ class Writer:
         self.stream = self.path.open('x', buffering=1)
         self.seq = 0
         self.lock = threading.Lock()
+        self.load_clock = clock_receipt() if os.environ.get('MOE_LOAD_MODE') == '1' else None
 
     def emit(self, event, **fields):
         with self.lock:
@@ -25,6 +26,7 @@ class Writer:
             row = dict(event=event, seq=self.seq, pid=os.getpid(), dp_rank=self.rank,
                        observation_instance=self.incarnation, monotonic_ns=time.monotonic_ns(),
                        clock='Local process monotonic_ns; ordering joins use explicit lineage, not clock equality', **fields)
+            if self.load_clock is not None: row['clock_identity'] = self.load_clock
             self.stream.write(json.dumps(row) + '\n')
             return row
 
@@ -39,6 +41,38 @@ def request_row(req):
                 num_computed_tokens=req.num_computed_tokens,
                 num_in_flight_tokens=req.num_in_flight_tokens,
                 num_output_tokens=req.num_output_tokens)
+
+
+def clock_receipt():
+    """Same-host comparison is conditional on these actual Linux clock facts."""
+    try:
+        boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        namespace = os.readlink('/proc/self/ns/time')
+        implementation = time.get_clock_info('monotonic').implementation
+        verified = bool(boot and namespace and 'CLOCK_MONOTONIC' in implementation)
+        return dict(verified=verified, boot_id=boot, time_namespace=namespace,
+                    implementation=implementation, units='ns')
+    except OSError as error:
+        return dict(verified=False, reason=repr(error), units='ns')
+
+
+def native_batch_record(batch):
+    """Read only CPU-native row ordering, never infer it from grant dict order."""
+    def plain(value): return value.tolist() if hasattr(value, 'tolist') else list(value)
+    ids=list(batch.req_ids); bounds=plain(batch.query_start_loc_np)[:len(ids)+1]
+    counts=plain(batch.num_scheduled_tokens)[:len(ids)]
+    progress=plain(batch.num_computed_tokens_np)[:len(ids)]
+    prefill=plain(batch.is_prefilling_np)[:len(ids)]
+    contexts=plain(batch.seq_lens_cpu_upper_bound)[:len(ids)]
+    if len(set(ids))!=len(ids) or not bounds or bounds[0]!=0 or len(bounds)!=len(ids)+1:
+        raise ValueError('Invalid native batch identity/bounds')
+    if any(bounds[i+1]-bounds[i]!=counts[i] or counts[i]<=0 for i in range(len(ids))):
+        raise ValueError('Native batch rows do not match positive grants')
+    if bounds[-1]!=int(batch.num_tokens): raise ValueError('Native real-token extent mismatch')
+    return dict(req_ids=ids, bounds=bounds, counts=counts, computed_cpu=progress,
+                is_prefilling=prefill, contexts_cpu_upper_bound=contexts,
+                num_tokens=int(batch.num_tokens), padded_tokens=int(batch.num_tokens_after_padding),
+                provenance='Native prepare_inputs return; CPU query_start_loc_np and req_ids; context/progress may be optimistic')
 
 
 def submission_work(native_grants, dummy):

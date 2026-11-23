@@ -5,7 +5,7 @@ from pathlib import Path
 import time
 
 from model_observer import ReadOnlyRankState
-from observation_contract import submission_work
+from observation_contract import submission_work, native_batch_record, clock_receipt
 from observation_timing import start_interval, end_interval, finish_interval
 
 
@@ -43,6 +43,20 @@ class ObservationWorker(ReadOnlyRankState):
 
         def observed_execute(scheduler_output, *args, **kwargs):
             if state['episode'] is None: return execute(scheduler_output, *args, **kwargs)
+            if state.get('load_mode'):
+                load=state['load']
+                if len(state['forwards'])>=load['max_frames']:
+                    load['overflow']=True
+                    return execute(scheduler_output,*args,**kwargs)
+                state['seq']+=1
+                frame=dict(forward=state['seq'], **submission_work(scheduler_output.num_scheduled_tokens,kwargs.get('dummy_run',False)),
+                    layers=[], batch=None, sample=False, submit_monotonic_ns=time.monotonic_ns())
+                state['forwards'].append(frame);state['active']=frame
+                try:
+                    result=execute(scheduler_output,*args,**kwargs)
+                    frame['return_monotonic_ns']=time.monotonic_ns()
+                    return result
+                finally:state['active']=None
             if len(state['forwards']) >= 32: raise RuntimeError('Bounded observation exceeded 32 forwards per episode')
             state['seq'] += 1
             frame = dict(forward=state['seq'], **submission_work(scheduler_output.num_scheduled_tokens, kwargs.get('dummy_run', False)), layers=[],
@@ -60,6 +74,9 @@ class ObservationWorker(ReadOnlyRankState):
         def pre_forward(module, args, kwargs):
             frame = state['active']
             if frame is None or state['mode']=='control': return
+            if state.get('load_mode'):
+                self._load_pre_forward(torch,frame,kwargs)
+                return
             positions = kwargs.get('positions')
             inputs = kwargs.get('input_ids')
             if positions is not None: frame['_positions'] = positions.detach().clone()
@@ -69,6 +86,9 @@ class ObservationWorker(ReadOnlyRankState):
         def post_forward(module,args,kwargs,result):
             frame=state['active']
             if frame is not None and 'forward_timing' in frame: end_interval(torch,frame['forward_timing'])
+            if frame is not None and state.get('load_mode') and frame['sample']:
+                frame['_completion']=torch.cuda.Event(enable_timing=False)
+                frame['_completion'].record()
 
         self.get_model().register_forward_pre_hook(pre_forward, with_kwargs=True)
         self.get_model().register_forward_hook(post_forward, with_kwargs=True)
@@ -82,6 +102,8 @@ class ObservationWorker(ReadOnlyRankState):
             def observe_expert(*args, _name=name, _mapping=mapping, _original=original, **kwargs):
                 frame = state['active']
                 if frame is None or state['mode']=='control': return _original(*args, **kwargs)
+                if state.get('load_mode'):
+                    return self._load_expert(torch,frame,_name,_mapping,_original,args,kwargs,get_forward_context)
                 ids = kwargs['topk_ids']
                 ctx = get_forward_context()
                 metadata = ctx.dp_metadata
@@ -120,6 +142,18 @@ class ObservationWorker(ReadOnlyRankState):
         def observed_dispatch(hidden_states, topk_weights, topk_ids, *args, **kwargs):
             frame = state['active']
             if frame is None or state['mode']=='control': return dispatch(hidden_states, topk_weights, topk_ids, *args, **kwargs)
+            if state.get('load_mode'):
+                state['load']['collective']+=1
+                row=dict(observer_collective_ordinal=state['load']['collective'],
+                    input_shape=list(hidden_states.shape),
+                    logical_input_bytes=sum(t.numel()*t.element_size() for t in (hidden_states,topk_weights,topk_ids)),
+                    enter_ns=time.monotonic_ns())
+                if frame['sample']:row['gpu_timing']=start_interval(torch)
+                result=dispatch(hidden_states,topk_weights,topk_ids,*args,**kwargs)
+                if frame['sample']:end_interval(torch,row['gpu_timing'])
+                row.update(returned=True,gathered_shape=list(result[0].shape),return_ns=time.monotonic_ns())
+                frame['_dispatch']=row
+                return result
             row = dict(input_shape=list(hidden_states.shape), local_topk_shape=list(topk_ids.shape),
                        logical_input_bytes=sum(t.numel()*t.element_size() for t in (hidden_states,topk_weights,topk_ids)),
                        byte_scope='Logical input tensors, not physical wire traffic',
@@ -135,6 +169,15 @@ class ObservationWorker(ReadOnlyRankState):
         def observed_combine(hidden_states, *args, **kwargs):
             frame = state['active']
             if frame is None or state['mode']=='control': return combine(hidden_states, *args, **kwargs)
+            if state.get('load_mode'):
+                row=frame['_last_layer']
+                row['combine_input_matches_expert_output']=tensor_identity(hidden_states)==row['expert_output_tensor']
+                row['combine_logical_input_bytes']=hidden_states.numel()*hidden_states.element_size()
+                if frame['sample']:row['combine_timing']=start_interval(torch)
+                result=combine(hidden_states,*args,**kwargs)
+                if frame['sample']:end_interval(torch,row['combine_timing'])
+                row['combine_returned']=True
+                return result
             row = frame.get('_last_layer')
             if row is None: raise ValueError('Combine without observed expert output')
             row['combine_input_tensor'] = tensor_identity(hidden_states)
@@ -175,6 +218,103 @@ class ObservationWorker(ReadOnlyRankState):
             receipt.update(dp_rank=self.parallel_config.data_parallel_rank,worker_pid=os.getpid(),gpu_uuid=identity['gpu_uuid'])
             Path(folder,f'timing-qualification-dp{self.parallel_config.data_parallel_rank}.json').write_text(json.dumps(receipt,indent=2)+'\n')
         return dict(installed_layers=state['installed_layers'], dp_rank=self.parallel_config.data_parallel_rank)
+
+    def load_install(self,folder):
+        result=self.observation_install(folder,True)
+        state=self._mechanistic_obs;state['load_mode']=True
+        prepare=self.model_runner.prepare_inputs
+        def observed_prepare(*args,**kwargs):
+            batch=prepare(*args,**kwargs)
+            frame=state['active']
+            if frame is not None and state['episode'] is not None:frame['batch']=native_batch_record(batch)
+            return batch
+        self.model_runner.prepare_inputs=observed_prepare
+        # Optional native alignment metadata, no source rewrite or extra sync.
+        try:
+            import vllm.model_executor.layers.fused_moe.experts.triton_moe as native
+            align=native._prepare_expert_assignment
+            def observed_align(*args,**kwargs):
+                result=align(*args,**kwargs)
+                frame=state['active']
+                if frame is not None and frame.get('sample'):
+                    row=frame['_last_layer']
+                    row['tile_config']=dict(args[1] if len(args)>1 else kwargs['config'])
+                    row['_padded_tokens']=result[2].detach().clone()
+                return result
+            native._prepare_expert_assignment=observed_align
+            state['padding_hook']='AVAILABLE; native padded rows, not executed instructions'
+        except (AttributeError,ImportError) as error:state['padding_hook']='UNSUPPORTED: '+repr(error)
+        return dict(**result,clock_identity=clock_receipt(),padding_hook=state['padding_hook'])
+
+    def load_begin(self,episode,options):
+        state=self._mechanistic_obs
+        if state['episode'] is not None or Path(episode).name!=episode:raise ValueError('Invalid/active load episode')
+        state.update(episode=episode,mode='load',forwards=[],active=None,seq=0)
+        state['load']=dict(**options,collective=0,root=0,samples=0,trace_bytes=0,overflow=False)
+        state['load']['trace_budget_scope']='Conservative tensor-clone bytes, excluding allocator/event metadata; not total VRAM'
+        return dict(dp_rank=self.parallel_config.data_parallel_rank,clock_identity=clock_receipt(),episode=episode)
+
+    def _load_pre_forward(self,torch,frame,kwargs):
+        state=self._mechanistic_obs;load=state['load'];load['root']+=1
+        frame['root_ordinal']=load['root'];frame['root_enter_ns']=time.monotonic_ns()
+        candidate=load['diagnostic'] and (load['root']<=2 or load['root']%load['sample_every']==0)
+        # Upper bound accounts for 16 gathered top-k clones and local token IDs.
+        estimated=16*2*512*8*8+2*512*8+16*8
+        frame['sample']=bool(candidate and load['samples']<load['max_samples'] and load['trace_bytes']+estimated<=load['max_trace_bytes'])
+        if frame['sample']:
+            load['samples']+=1;load['trace_bytes']+=estimated
+            for key in ('positions','input_ids'):
+                if kwargs.get(key) is not None:frame['_'+key]=kwargs[key].detach().clone()
+            frame['forward_timing']=start_interval(torch)
+
+    def _load_expert(self,torch,frame,name,mapping,original,args,kwargs,get_context):
+        metadata=get_context().dp_metadata
+        row=dict(layer=name,dp_sizes=list(metadata.get_chunk_sizes_across_dp_rank()),
+            native_dp_token_counts=metadata.num_tokens_across_dp_cpu.tolist(),
+            dispatch=frame.pop('_dispatch'),combine_returned=False,
+            real_vs_padding='Joined after drain to native InputBatch row ranges')
+        frame['layers'].append(row);frame['_last_layer']=row
+        if frame['sample']:
+            row['global_to_local_map']=mapping
+            row['_topk']=kwargs['topk_ids'].detach().clone()
+            row['expert_timing']=start_interval(torch)
+            row['native_expert_call_enter_ns']=time.monotonic_ns()
+        result=original(*args,**kwargs)
+        if frame['sample']:
+            row['native_expert_call_return_ns']=time.monotonic_ns()
+            end_interval(torch,row['expert_timing'])
+        row['expert_output_tensor']=tensor_identity(kwargs['output'])
+        return result
+
+    def load_end(self,episode):
+        state=self._mechanistic_obs
+        if state['episode']!=episode:raise ValueError('Wrong load episode')
+        frames=state['forwards'];state['episode']=None
+        sampled=[f for f in frames if f.get('sample')]
+        if sampled:sampled[-1]['_completion'].synchronize()
+        for f in sampled:
+            f['completion_verified_at_drain']=f.pop('_completion').query()
+            f['forward_timing']=finish_interval(f['forward_timing'])
+            for key in ('positions','input_ids'):
+                tensor=f.pop('_'+key,None)
+                f[key]=tensor.cpu().tolist() if tensor is not None else None
+            for row in f['layers']:
+                row['topk_ids']=row.pop('_topk').cpu().tolist()
+                row['expert_timing']=finish_interval(row['expert_timing'])
+                row['dispatch']['gpu_timing']=finish_interval(row['dispatch']['gpu_timing'])
+                row['combine_timing']=finish_interval(row['combine_timing'])
+                padded=row.pop('_padded_tokens',None)
+                row['native_padded_tokens']=int(padded.cpu().item()) if padded is not None else None
+        for f in frames:
+            f.pop('_last_layer',None);f.pop('_dispatch',None)
+        record=dict(episode=episode,dp_rank=self.parallel_config.data_parallel_rank,worker_pid=os.getpid(),
+            observed_parent_pid=os.getppid(),clock_identity=clock_receipt(),forwards=frames,
+            coverage=state['load'],padding_hook=state['padding_hook'],
+            limits='CPU submission clock and one-device CUDA intervals; no global GPU clock, pure network or critical-path claim')
+        path=Path(state['folder'])/(episode+'-load-worker-dp'+str(record['dp_rank'])+'.json')
+        with path.open('x') as f:json.dump(record,f)
+        state['forwards']=[]
+        return dict(dp_rank=record['dp_rank'],path=str(path),overflow=state['load']['overflow'])
 
     def observation_begin(self, episode, mode='diagnostic'):
         state = self._mechanistic_obs
