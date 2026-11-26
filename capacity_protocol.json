@@ -1,0 +1,82 @@
+{
+  "protocol": "olmoe-capacity-v0.11.0",
+  "model_pin": "model-pin.json",
+  "engine_base": "model-qualification.json",
+  "topology": {
+    "A": [
+      {
+        "group": "D1",
+        "dp": 1,
+        "devices": [
+          0
+        ]
+      }
+    ],
+    "B": [
+      {
+        "group": "D1",
+        "dp": 2,
+        "devices": [
+          0,
+          1
+        ]
+      }
+    ],
+    "C0": [
+      {
+        "group": "D1",
+        "dp": 2,
+        "devices": [
+          0,
+          1
+        ]
+      },
+      {
+        "group": "D2",
+        "dp": 2,
+        "devices": [
+          2,
+          3
+        ]
+      }
+    ],
+    "C1": [
+      {
+        "group": "D1",
+        "dp": 2,
+        "devices": [
+          0,
+          1
+        ]
+      },
+      {
+        "group": "D2",
+        "dp": 2,
+        "devices": [
+          2,
+          3
+        ]
+      }
+    ]
+  },
+  "activation_fraction": 0.5,
+  "group_rpc_ports": [
+    30101,
+    30121
+  ],
+  "repetitions": 2,
+  "startup_timeout_seconds": 600,
+  "pass_timeout_seconds": 240,
+  "drain_timeout_seconds": 60,
+  "cleanup_timeout_seconds": 35,
+  "max_offers_per_pass": 128,
+  "max_pending_per_group": 64,
+  "max_output_tokens": 8,
+  "primer": "One retained full workload replay per group, then full drain/barrier. Same per-group primer in every arm; first-use coverage remains measured, not assumed.",
+  "slo": {
+    "ttft_seconds": null,
+    "mean_tpot_seconds": null,
+    "end_to_end_seconds": null
+  },
+  "scope": "Collocated prefill+decode OLMoE FP16, one host. A->B changes DP/scheduler/KV structure as well as EP. C0/C1 is a resident four-GPU scripted routing-plan intervention, not an EPP authority/control API. No BLIS calibration or Qwen/DeepEP/G0 claim."
+}

@@ -1,5 +1,13 @@
 # OLMoE Kaggle ortam tanılaması
 
+## Fiziksel kapasite deneyi (`capacity-v0.11.0`)
+
+Yeni A (EP1), B (EP2) ve C0/C1 (dört GPU, iki resident EP2 grup) çalıştırıcısı,
+Kaggle'da yalnız iki GPU'lu B smoke hücresi ve tam Linux komutları:
+[CAPACITY_EXPERIMENT.md](CAPACITY_EXPERIMENT.md).
+Yerel CPU testleri fiziksel dört-GPU sonucu değildir; A mevcut T4 bellek sınırında
+reddedilir. Önceki deney yönergeleri ve kanıtları aşağıda tarihsel olarak korunur.
+
 ## Aktif istek sınırı: 4 → 8 (`load-sensitivity-v0.10.1`)
 
 Bu sürüm yalnız **aynı geliş izi altında aktif istek sınırı duyarlılığını** ölçer.
